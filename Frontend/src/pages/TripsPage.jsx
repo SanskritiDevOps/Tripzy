@@ -1,0 +1,125 @@
+import { useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { Luggage, Plus, PlaneTakeoff, History, Globe2 } from 'lucide-react'
+import { Button } from '../components/ui/Button'
+import { EmptyState } from '../components/ui/States'
+import { SegmentedControl } from '../components/ui/Card'
+import { TripCard } from '../features/trips/TripCard'
+import { TripFormModal } from '../features/trips/TripFormModal'
+import { useCurrentUser, useMyTrips, useUsersById } from '../store/selectors'
+import { useTripzyStore } from '../store/useTripzyStore'
+import { tripStatus } from '../utils/dates'
+
+export function TripsPage() {
+  const user = useCurrentUser()
+  const trips = useMyTrips()
+  const usersById = useUsersById()
+  const members = useTripzyStore((s) => s.members)
+  const places = useTripzyStore((s) => s.places)
+  const expenses = useTripzyStore((s) => s.expenses)
+  const [params, setParams] = useSearchParams()
+  const [filter, setFilter] = useState('upcoming')
+
+  const creating = params.get('new') === '1'
+  const prefill = {
+    destination: params.get('destination') ?? undefined,
+    start: params.get('start') ?? undefined,
+    end: params.get('end') ?? undefined,
+    group: params.get('group') ?? undefined,
+  }
+
+  const stats = useMemo(() => {
+    const byTrip = {}
+    for (const trip of trips) byTrip[trip.id] = { members: [], placeCount: 0, spentMinor: 0 }
+    for (const m of members) if (byTrip[m.tripId] && usersById[m.userId]) byTrip[m.tripId].members.push(usersById[m.userId])
+    for (const p of places) if (byTrip[p.tripId]) byTrip[p.tripId].placeCount += 1
+    for (const e of expenses) if (byTrip[e.tripId]) byTrip[e.tripId].spentMinor += e.amountMinor
+    return byTrip
+  }, [trips, members, places, expenses, usersById])
+
+  const grouped = useMemo(() => {
+    const upcoming = trips.filter((t) => tripStatus(t.startDate, t.endDate).kind !== 'past')
+    const past = trips.filter((t) => tripStatus(t.startDate, t.endDate).kind === 'past').reverse()
+    return { upcoming, past, all: [...upcoming, ...past] }
+  }, [trips])
+
+  const visible = grouped[filter]
+  const openCreate = () => setParams({ new: '1' })
+  const closeCreate = () => setParams({}, { replace: true })
+
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10 lg:px-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-coral-600">Hi {user?.name.split(' ')[0]} 👋</p>
+          <h1 className="mt-1 font-display text-3xl font-semibold sm:text-4xl">Your trips</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            {grouped.upcoming.length} upcoming · {grouped.past.length} completed
+          </p>
+        </div>
+        <Button icon={Plus} variant="accent" onClick={openCreate} className="self-start sm:self-auto">
+          Plan a new trip
+        </Button>
+      </div>
+
+      <div className="mt-6 overflow-x-auto scrollbar-none">
+        <SegmentedControl
+          aria-label="Filter trips"
+          value={filter}
+          onChange={setFilter}
+          options={[
+            { value: 'upcoming', label: 'Upcoming', icon: PlaneTakeoff, count: grouped.upcoming.length },
+            { value: 'past', label: 'Past', icon: History, count: grouped.past.length },
+            { value: 'all', label: 'All', icon: Globe2, count: grouped.all.length },
+          ]}
+        />
+      </div>
+
+      <div className="mt-6">
+        {visible.length === 0 ? (
+          <EmptyState
+            icon={Luggage}
+            title={filter === 'past' ? 'No past trips yet' : 'No trips planned'}
+            description={
+              filter === 'past' ? 'Trips you’ve completed will show up here.' : 'Start a trip, invite your friends and begin collecting places.'
+            }
+            action={
+              filter !== 'past' && (
+                <Button icon={Plus} onClick={openCreate}>
+                  Plan a trip
+                </Button>
+              )
+            }
+          />
+        ) : (
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {visible.map((trip) => (
+              <TripCard
+                key={trip.id}
+                trip={trip}
+                members={stats[trip.id].members}
+                placeCount={stats[trip.id].placeCount}
+                spentMinor={stats[trip.id].spentMinor}
+                isOwner={trip.ownerId === user?.id}
+              />
+            ))}
+            {filter !== 'past' && (
+              <button
+                type="button"
+                onClick={openCreate}
+                className="flex min-h-64 flex-col items-center justify-center gap-3 rounded-3xl border-2 border-dashed border-sand-300 text-slate-500 transition-colors hover:border-ocean-400 hover:bg-white hover:text-ocean-700"
+              >
+                <span className="grid size-12 place-items-center rounded-2xl bg-sand-100">
+                  <Plus className="size-6" aria-hidden />
+                </span>
+                <span className="font-semibold">Start another trip</span>
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <TripFormModal open={creating} onClose={closeCreate} prefill={prefill} />
+    </div>
+  )
+}
