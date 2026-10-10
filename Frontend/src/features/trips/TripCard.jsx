@@ -10,7 +10,7 @@ import { formatMoney } from '../../utils/money'
 
 const FALLBACK = { gradient: 'from-ocean-400 via-ocean-200 to-sand-200', emoji: '🧭' }
 
-export function TripCard({ trip, members, placeCount, spentMinor, isOwner }) {
+export function TripCard({ trip, members, placeCount, spentMinor, isLeader }) {
   const destination = DESTINATIONS.find((d) => d.id === trip.destinationId) ?? FALLBACK
   const status = tripStatus(trip.startDate, trip.endDate)
   const days = tripLength(trip.startDate, trip.endDate)
@@ -30,8 +30,8 @@ export function TripCard({ trip, members, placeCount, spentMinor, isOwner }) {
             {countdownLabel(trip.startDate, trip.endDate)}
           </Badge>
         </div>
-        {isOwner && (
-          <span className="absolute top-3 right-3 grid size-7 place-items-center rounded-full bg-white/85 text-amber-600" title="You own this trip">
+        {isLeader && (
+          <span className="absolute top-3 right-3 grid size-7 place-items-center rounded-full bg-white/85 text-amber-600" title="You’re the team leader">
             <Crown className="size-3.5" aria-hidden />
           </span>
         )}

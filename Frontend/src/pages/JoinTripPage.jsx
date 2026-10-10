@@ -10,8 +10,8 @@ import { useTripMembers } from '../store/selectors'
 import { toast } from '../store/useToastStore'
 import { formatDateRange } from '../utils/dates'
 
-/** /join/:token — invite preview and join (POST /invites/:token/join). */
-export function JoinTripPage() {
+/** /join/:token — local invite links for the bundled demo trips. */
+export function LocalJoinTripPage() {
   const { token } = useParams()
   const navigate = useNavigate()
   const invite = useTripzyStore((s) => s.invites.find((i) => i.token === token))
@@ -27,7 +27,7 @@ export function JoinTripPage() {
         <EmptyState
           icon={LinkIcon}
           title={expired ? 'This invite has expired' : 'Invite not found'}
-          description="Ask the trip owner to share a fresh invite link."
+          description="Ask the team leader to share a fresh invite link."
           action={<Button to="/trips">Go to my trips</Button>}
         />
       </div>

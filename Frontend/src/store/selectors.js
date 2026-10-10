@@ -41,7 +41,7 @@ export function useTripMembers(tripId) {
     return members
       .filter((m) => m.tripId === tripId && usersById[m.userId])
       .map((m) => ({ ...usersById[m.userId], role: m.role, joinedAt: m.joinedAt, online: online.has(m.userId) }))
-      .sort((a, b) => (a.role === 'OWNER' ? -1 : b.role === 'OWNER' ? 1 : a.name.localeCompare(b.name)))
+      .sort((a, b) => (a.role === 'LEADER' ? -1 : b.role === 'LEADER' ? 1 : a.name.localeCompare(b.name)))
   }, [members, usersById, presence, tripId, currentUserId])
 }
 

@@ -74,14 +74,14 @@ export const useTripzyStore = create(
          * main traveller; the same account keeps its local changes.
          */
         attachSessionUser: (user) => {
-          const profile = { id: user.id, name: user.name, email: user.email }
+          const profile = { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl ?? null }
           if (get().sessionUserId !== user.id) {
             set({ ...createSeedData(profile), currentUserId: user.id, sessionUserId: user.id })
             return
           }
           set((s) => ({
             currentUserId: user.id,
-            users: s.users.map((u) => (u.id === user.id ? { ...u, name: user.name, email: user.email } : u)),
+            users: s.users.map((u) => (u.id === user.id ? { ...u, name: user.name, email: user.email, avatarUrl: user.avatarUrl ?? null } : u)),
           }))
         },
         detachSessionUser: () => set({ currentUserId: null }),
@@ -98,7 +98,7 @@ export const useTripzyStore = create(
             const users = [...s.users]
             for (const m of remoteTrips.flatMap((t) => t.members)) {
               if (!users.some((u) => u.id === m.id)) {
-                users.push({ id: m.id, name: m.name, email: m.email, color: AVATAR_COLORS[users.length % AVATAR_COLORS.length] })
+                users.push({ id: m.id, name: m.name, email: m.email, avatarUrl: m.avatarUrl ?? null, color: AVATAR_COLORS[users.length % AVATAR_COLORS.length] })
               }
             }
             let trips = s.trips.filter((t) => !gone.has(t.id))
@@ -174,7 +174,7 @@ export const useTripzyStore = create(
           }
           set((s) => ({
             trips: [trip, ...s.trips],
-            members: [...s.members, { tripId, userId: currentUserId, role: 'OWNER', joinedAt: now() }],
+            members: [...s.members, { tripId, userId: currentUserId, role: 'LEADER', joinedAt: now() }],
             itineraryDays: [...s.itineraryDays, ...buildDays(tripId, startDate, endDate)],
             packingItems: [
               ...s.packingItems,
@@ -239,7 +239,7 @@ export const useTripzyStore = create(
           const { invites, members, currentUserId, users } = get()
           const invite = invites.find((i) => i.token === token)
           if (!invite) return { error: 'This invite link is invalid.' }
-          if (new Date(invite.expiresAt) < new Date()) return { error: 'This invite link has expired. Ask the owner for a new one.' }
+          if (new Date(invite.expiresAt) < new Date()) return { error: 'This invite link has expired. Ask the team leader for a new one.' }
           const already = members.some((m) => m.tripId === invite.tripId && m.userId === currentUserId)
           if (!already) {
             set((s) => ({ members: [...s.members, { tripId: invite.tripId, userId: currentUserId, role: 'MEMBER', joinedAt: now() }] }))
@@ -254,11 +254,12 @@ export const useTripzyStore = create(
         },
 
         // ── Places & votes ─────────────────────────────────────────────
+        /** Adds a place locally. Pass `id` (and the other server fields) for places created via the API. */
         addPlace: (tripId, data) => {
           const place = {
-            id: newId('place'),
+            id: data.id ?? newId('place'),
             tripId,
-            addedBy: get().currentUserId,
+            addedBy: data.addedBy ?? get().currentUserId,
             name: data.name.trim(),
             address: data.address?.trim() ?? '',
             lat: data.lat,
@@ -266,8 +267,9 @@ export const useTripzyStore = create(
             category: data.category,
             notes: data.notes?.trim() ?? '',
             durationMinutes: data.durationMinutes ?? 60,
-            isLocked: false,
-            createdAt: now(),
+            isLocked: data.isLocked ?? false,
+            lockedById: data.lockedById ?? null,
+            createdAt: data.createdAt ?? now(),
           }
           set((s) => ({ places: [...s.places, place] }))
           log(tripId, 'PLACE_ADDED', { name: place.name })
@@ -314,16 +316,53 @@ export const useTripzyStore = create(
           const scores = voteScores(get().votes)
           set((s) => ({
             trips: s.trips.map((t) => (t.id === tripId ? { ...t, votingDeadline: now() } : t)),
-            places: s.places.map((p) => (p.tripId === tripId ? { ...p, isLocked: (scores[p.id] ?? 0) > 0 } : p)),
+            places: s.places.map((p) =>
+              p.tripId === tripId && (scores[p.id] ?? 0) > 0 ? { ...p, isLocked: true, lockedById: s.currentUserId } : p,
+            ),
           }))
           log(tripId, 'VOTING_CLOSED', {})
         },
 
-        reopenVoting: (tripId) =>
+        // Reopening voting keeps existing locks; the leader unlocks places individually.
+        reopenVoting: (tripId) => set((s) => ({ trips: s.trips.map((t) => (t.id === tripId ? { ...t, votingDeadline: null } : t)) })),
+
+        /** Leader-only in the UI and enforced by the API for server trips. */
+        setPlaceLock: (placeId, locked) => {
+          const place = get().places.find((p) => p.id === placeId)
           set((s) => ({
-            trips: s.trips.map((t) => (t.id === tripId ? { ...t, votingDeadline: null } : t)),
-            places: s.places.map((p) => (p.tripId === tripId ? { ...p, isLocked: false } : p)),
-          })),
+            places: s.places.map((p) => (p.id === placeId ? { ...p, isLocked: locked, lockedById: locked ? s.currentUserId : null } : p)),
+          }))
+          if (place) log(place.tripId, locked ? 'PLACE_LOCKED' : 'PLACE_UNLOCKED', { name: place.name })
+        },
+
+        /**
+         * Replaces a server trip's places with GET /api/trips/:id/places.
+         * Itinerary stops whose place no longer exists are dropped.
+         */
+        syncRemotePlaces: (tripId, remotePlaces) =>
+          set((s) => {
+            const incoming = remotePlaces.map((p) => ({
+              id: p.id,
+              tripId,
+              addedBy: p.addedBy,
+              name: p.name,
+              address: p.address,
+              lat: p.lat,
+              lng: p.lng,
+              category: p.category,
+              notes: p.notes,
+              durationMinutes: p.durationMinutes,
+              isLocked: p.isLocked,
+              lockedById: p.lockedById,
+              createdAt: p.createdAt,
+            }))
+            const keep = new Set(incoming.map((p) => p.id))
+            const tripDayIds = new Set(s.itineraryDays.filter((d) => d.tripId === tripId).map((d) => d.id))
+            return {
+              places: [...s.places.filter((p) => p.tripId !== tripId), ...incoming],
+              itineraryItems: s.itineraryItems.filter((i) => !tripDayIds.has(i.dayId) || keep.has(i.placeId)),
+            }
+          }),
 
         // ── Itinerary ──────────────────────────────────────────────────
         addItineraryItem: (dayId, data) => {
@@ -403,10 +442,13 @@ export const useTripzyStore = create(
           let days = s.itineraryDays.filter((d) => d.tripId === tripId).sort((a, b) => a.dayNumber - b.dayNumber)
           const dayIds = new Set(days.map((d) => d.id))
           let items = s.itineraryItems.filter((i) => dayIds.has(i.dayId))
+          // Stops are kept when their time slot is locked or their place is locked by the leader.
+          const lockedPlaceIds = new Set(s.places.filter((p) => p.tripId === tripId && p.isLocked).map((p) => p.id))
+          const keepStop = (i) => i.isLocked || lockedPlaceIds.has(i.placeId)
 
           if (onlyDayId) {
             // Regenerate one day: drop its unlocked stops, keep locked ones, then refill only that day.
-            items = items.filter((i) => i.dayId !== onlyDayId || i.isLocked)
+            items = items.filter((i) => i.dayId !== onlyDayId || keepStop(i))
             days = days.filter((d) => d.id === onlyDayId)
           }
 
@@ -419,7 +461,7 @@ export const useTripzyStore = create(
 
           set((state) => {
             let next = state.itineraryItems
-            if (onlyDayId) next = next.filter((i) => i.dayId !== onlyDayId || i.isLocked)
+            if (onlyDayId) next = next.filter((i) => i.dayId !== onlyDayId || keepStop(i))
             const created = drafts.map((d) => ({
               id: newId('item'),
               position: 999,
@@ -500,7 +542,7 @@ export const useTripzyStore = create(
           const { users, sessionUserId } = get()
           const me = users.find((u) => u.id === sessionUserId)
           set({
-            ...createSeedData(me ? { id: me.id, name: me.name, email: me.email } : undefined),
+            ...createSeedData(me ? { id: me.id, name: me.name, email: me.email, avatarUrl: me.avatarUrl } : undefined),
             currentUserId: sessionUserId,
             sessionUserId,
           })
@@ -509,8 +551,8 @@ export const useTripzyStore = create(
     },
     {
       name: STORAGE_KEY,
-      // v2: identity comes from the API session; older local-only data is discarded.
-      version: 2,
+      // v3: roles are LEADER/MEMBER (was OWNER/MEMBER); older local data is discarded.
+      version: 3,
       migrate: () => ({}),
       storage: createJSONStorage(() => {
         try {

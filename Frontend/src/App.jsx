@@ -5,7 +5,8 @@ import { LandingPage } from './pages/LandingPage'
 import { AuthPage } from './pages/AuthPage'
 import { TripsPage } from './pages/TripsPage'
 import { TripWorkspacePage } from './pages/TripWorkspacePage'
-import { JoinTripPage } from './pages/JoinTripPage'
+import { LocalJoinTripPage } from './pages/JoinTripPage'
+import { JoinInvitePage } from './pages/JoinInvitePage'
 import { NotFoundPage } from './pages/NotFoundPage'
 
 // Tabs are code-split: the map (Leaflet) and drag-and-drop only load when needed.
@@ -48,10 +49,12 @@ export default function App() {
             path="join/:token"
             element={
               <RequireAuth>
-                <JoinTripPage />
+                <LocalJoinTripPage />
               </RequireAuth>
             }
           />
+          {/* Email invites: public preview, login required to accept */}
+          <Route path="join-trip" element={<JoinInvitePage />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

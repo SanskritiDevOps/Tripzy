@@ -69,6 +69,13 @@ export const useAuthStore = create((set, get) => {
       return session.user
     },
 
+    /** `credential` is the ID token from the Google Identity Services button. */
+    async loginWithGoogle(credential) {
+      const session = await authApi.google(credential)
+      setSession(session)
+      return session.user
+    },
+
     async register(details) {
       const session = await authApi.register(details)
       setSession(session)
@@ -79,6 +86,8 @@ export const useAuthStore = create((set, get) => {
       try {
         await authApi.logout()
       } finally {
+        // Stop Google from silently re-selecting this account on the next visit.
+        window.google?.accounts?.id?.disableAutoSelect()
         clearSession()
       }
     },

@@ -108,7 +108,7 @@ export function TripsPage() {
                 members={stats[trip.id].members}
                 placeCount={stats[trip.id].placeCount}
                 spentMinor={stats[trip.id].spentMinor}
-                isOwner={trip.ownerId === user?.id}
+                isLeader={members.some((m) => m.tripId === trip.id && m.userId === user?.id && m.role === 'LEADER')}
               />
             ))}
             {filter !== 'past' && (

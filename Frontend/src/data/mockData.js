@@ -95,7 +95,7 @@ export function createSeedData(sessionUser) {
   const data = buildSeed()
   if (!sessionUser) return data
   const rebound = rebindId(data, DEMO_USER_ID, sessionUser.id)
-  rebound.users = rebound.users.map((u) => (u.id === sessionUser.id ? { ...u, name: sessionUser.name, email: sessionUser.email } : u))
+  rebound.users = rebound.users.map((u) => (u.id === sessionUser.id ? { ...u, name: sessionUser.name, email: sessionUser.email, avatarUrl: sessionUser.avatarUrl ?? null } : u))
   return rebound
 }
 
@@ -354,9 +354,9 @@ function buildSeed() {
   ]
 
   const members = [
-    ...crew.map((userId, i) => ({ tripId: 't-jaipur', userId, role: userId === 'u1' ? 'OWNER' : 'MEMBER', joinedAt: hoursAgo(24 * 9 - i) })),
-    ...['u5', 'u1', 'u3'].map((userId, i) => ({ tripId: 't-kyoto', userId, role: userId === 'u5' ? 'OWNER' : 'MEMBER', joinedAt: hoursAgo(24 * 3 - i) })),
-    ...['u2', 'u1', 'u4'].map((userId, i) => ({ tripId: 't-goa', userId, role: userId === 'u2' ? 'OWNER' : 'MEMBER', joinedAt: hoursAgo(24 * 190 - i) })),
+    ...crew.map((userId, i) => ({ tripId: 't-jaipur', userId, role: userId === 'u1' ? 'LEADER' : 'MEMBER', joinedAt: hoursAgo(24 * 9 - i) })),
+    ...['u5', 'u1', 'u3'].map((userId, i) => ({ tripId: 't-kyoto', userId, role: userId === 'u5' ? 'LEADER' : 'MEMBER', joinedAt: hoursAgo(24 * 3 - i) })),
+    ...['u2', 'u1', 'u4'].map((userId, i) => ({ tripId: 't-goa', userId, role: userId === 'u2' ? 'LEADER' : 'MEMBER', joinedAt: hoursAgo(24 * 190 - i) })),
   ]
 
   const activity = [

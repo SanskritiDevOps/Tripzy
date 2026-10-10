@@ -16,3 +16,21 @@ export async function signUp(overrides) {
 }
 
 export const auth = (token) => ({ Authorization: `Bearer ${token}` })
+
+export const tripBody = {
+  name: 'Jaipur Royal Weekend',
+  destination: 'Jaipur, Rajasthan',
+  startDate: '2026-11-14',
+  endDate: '2026-11-17',
+  budgetMinor: 12000000,
+}
+
+/** A trip with a team leader and one member: { leader, member, trip }. */
+export async function tripWithTeam() {
+  const { prisma } = await import('../src/config/prisma.js')
+  const leader = await signUp()
+  const member = await signUp()
+  const res = await request(app).post('/api/trips').set(auth(leader.token)).send(tripBody).expect(201)
+  await prisma.tripMember.create({ data: { tripId: res.body.trip.id, userId: member.user.id, role: 'MEMBER' } })
+  return { leader, member, trip: res.body.trip }
+}

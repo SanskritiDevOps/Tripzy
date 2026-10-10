@@ -10,6 +10,8 @@ import { useAuthStore } from '../store/useAuthStore'
 import { toast } from '../store/useToastStore'
 import { ApiError } from '../api/client'
 import { loginPath, safeRedirect } from '../utils/urls'
+import { GoogleSignInButton } from '../features/auth/GoogleSignInButton'
+import { useAuthProviders } from '../features/auth/useAuthProviders'
 
 // Mirrors the API rules (Backend/src/modules/auth/auth.schemas.js) for instant feedback.
 const email = z.string().trim().min(1, 'Email is required').pipe(z.email('Enter a valid email address'))
@@ -42,6 +44,7 @@ export function AuthPage({ mode }) {
   const registerAccount = useAuthStore((s) => s.register)
   const redirectParam = params.get('redirect')
   const redirectTo = safeRedirect(redirectParam)
+  const { google: googleEnabled } = useAuthProviders()
 
   const {
     register,
@@ -71,6 +74,16 @@ export function AuthPage({ mode }) {
       if (error.isNetworkError || error.status === 429 || error.status >= 500) toast.error(error.message)
     }
   })
+
+  function onGoogleSuccess(user) {
+    toast.success(`Welcome, ${user.name.split(' ')[0]}!`)
+    navigate(redirectTo, { replace: true })
+  }
+
+  function onGoogleError(error) {
+    setError('root', { message: error.message })
+    if (error.isNetworkError || error.status === 429 || error.status >= 500) toast.error(error.message)
+  }
 
   if (status === 'authenticated') return <Navigate to={redirectTo} replace />
 
@@ -125,6 +138,15 @@ export function AuthPage({ mode }) {
           <div role="alert" className="mt-4 flex items-start gap-2 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700 ring-1 ring-red-200">
             <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
             {errors.root?.message ?? bootError}
+          </div>
+        )}
+
+        {googleEnabled && (
+          <div className="mt-6">
+            <GoogleSignInButton mode={isSignup ? 'signup' : 'login'} onSuccess={onGoogleSuccess} onError={onGoogleError} />
+            <div className="mt-6 flex items-center gap-3 text-xs font-medium tracking-wide text-slate-400 uppercase" aria-hidden>
+              <span className="h-px flex-1 bg-sand-200" /> or with email <span className="h-px flex-1 bg-sand-200" />
+            </div>
           </div>
         )}
 

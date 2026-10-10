@@ -7,6 +7,7 @@ import {
   Backpack,
   CalendarDays,
   CalendarRange,
+  Crown,
   LogOut,
   MapPin,
   MapPinned,
@@ -14,6 +15,7 @@ import {
   ShieldAlert,
   Trash2,
   UserPlus,
+  Users,
   Wallet,
 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
@@ -42,6 +44,9 @@ import { DESTINATIONS } from '../data/destinations'
 import { tripsApi } from '../api/endpoints'
 import { useRemoteTripsSync } from '../features/trips/useRemoteTripsSync'
 import { FullPageLoader } from '../components/layout/AppShell'
+import { useRemotePlacesSync } from '../features/places/useRemotePlacesSync'
+import { getTripPermissions, ROLE_LABELS } from '../features/trips/permissions'
+import { Badge } from '../components/ui/Badge'
 import { formatDateRange } from '../utils/dates'
 
 const TABS = [
@@ -66,6 +71,8 @@ export function TripWorkspacePage() {
   const deleteTrip = useTripzyStore((s) => s.deleteTrip)
   const removeMember = useTripzyStore((s) => s.removeMember)
   const { syncing } = useRemoteTripsSync()
+  useRemotePlacesSync(trip)
+  const permissions = useMemo(() => getTripPermissions(membership?.role), [membership?.role])
 
   const [dialog, setDialog] = useState(null) // 'invite' | 'settings' | 'activity' | 'delete' | 'leave'
   const close = () => setDialog(null)
@@ -78,7 +85,7 @@ export function TripWorkspacePage() {
   if (!trip) {
     return (
       <div className="mx-auto max-w-lg px-4 py-16">
-        <EmptyState icon={MapPin} title="Trip not found" description="It may have been deleted by its owner." action={<Button to="/trips">Back to my trips</Button>} />
+        <EmptyState icon={MapPin} title="Trip not found" description="It may have been deleted by the team leader." action={<Button to="/trips">Back to my trips</Button>} />
       </div>
     )
   }
@@ -96,8 +103,6 @@ export function TripWorkspacePage() {
     )
   }
 
-  const isOwner = membership.role === 'OWNER'
-
   /** Runs the API call for server-stored trips (demo trips are local only). Returns false on failure. */
   async function syncWithServer(call) {
     if (!trip.remote) return true
@@ -110,7 +115,7 @@ export function TripWorkspacePage() {
     }
   }
   const destination = DESTINATIONS.find((d) => d.id === trip.destinationId)
-  const context = { trip, members, places, placesById, itinerary, expenses, isOwner, currentUserId, usersById }
+  const context = { trip, members, places, placesById, itinerary, expenses, permissions, currentUserId, usersById }
 
   return (
     <div className="pb-24 md:pb-12">
@@ -126,7 +131,12 @@ export function TripWorkspacePage() {
                 {destination?.emoji ?? '🧭'}
               </span>
               <div className="min-w-0">
-                <h1 className="truncate font-display text-2xl font-semibold sm:text-3xl">{trip.name}</h1>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="truncate font-display text-2xl font-semibold sm:text-3xl">{trip.name}</h1>
+                  <Badge tone={permissions.isLeader ? 'warning' : 'ocean'} icon={permissions.isLeader ? Crown : undefined}>
+                    {permissions.isLeader ? 'You’re the Team Leader' : ROLE_LABELS.MEMBER}
+                  </Badge>
+                </div>
                 <p className="mt-1 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-slate-500">
                   <span className="inline-flex items-center gap-1.5">
                     <MapPin className="size-4" aria-hidden /> {trip.destination}
@@ -144,23 +154,23 @@ export function TripWorkspacePage() {
               <Button variant="secondary" size="sm" icon={Activity} onClick={() => setDialog('activity')} className="hidden sm:inline-flex">
                 Activity
               </Button>
-              <Button size="sm" icon={UserPlus} onClick={() => setDialog('invite')}>
-                Invite
+              <Button size="sm" icon={permissions.canInvite ? UserPlus : Users} onClick={() => setDialog('invite')}>
+                {permissions.canInvite ? 'Invite' : 'Members'}
               </Button>
               <Menu
                 label="Trip options"
                 items={[
                   { label: 'Activity feed', icon: Activity, onClick: () => setDialog('activity') },
-                  { label: 'Trip settings', icon: Settings2, onClick: () => setDialog('settings'), hidden: !isOwner },
-                  { label: 'Leave trip', icon: LogOut, onClick: () => setDialog('leave'), hidden: isOwner, danger: true },
-                  { label: 'Delete trip', icon: Trash2, onClick: () => setDialog('delete'), hidden: !isOwner, danger: true },
+                  { label: 'Trip settings', icon: Settings2, onClick: () => setDialog('settings'), hidden: !permissions.canEditTripDetails },
+                  { label: 'Leave trip', icon: LogOut, onClick: () => setDialog('leave'), hidden: permissions.isLeader, danger: true },
+                  { label: 'Delete trip', icon: Trash2, onClick: () => setDialog('delete'), hidden: !permissions.canDeleteTrip, danger: true },
                 ]}
               />
             </div>
           </div>
 
           <div className="mt-5">
-            <TripSummaryBar trip={trip} members={members} spentMinor={spentMinor} itinerary={itinerary} placesById={placesById} />
+            <TripSummaryBar trip={trip} members={members} spentMinor={spentMinor} itinerary={itinerary} placesById={placesById} permissions={permissions} />
           </div>
 
           {/* Desktop / tablet tabs */}
@@ -218,8 +228,8 @@ export function TripWorkspacePage() {
       </nav>
 
       {/* ── Dialogs ──────────────────────────────────────────── */}
-      <InviteModal open={dialog === 'invite'} onClose={close} trip={trip} members={members} isOwner={isOwner} currentUserId={currentUserId} />
-      <TripFormModal open={dialog === 'settings'} onClose={close} trip={trip} />
+      <InviteModal open={dialog === 'invite'} onClose={close} trip={trip} members={members} permissions={permissions} currentUserId={currentUserId} />
+      <TripFormModal open={dialog === 'settings'} onClose={close} trip={trip} permissions={permissions} />
       <Modal open={dialog === 'activity'} onClose={close} title="Activity" description="What your group has been up to." icon={Activity}>
         <ActivityFeed entries={activity} usersById={usersById} />
       </Modal>

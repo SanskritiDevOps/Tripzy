@@ -37,15 +37,25 @@ export const createTripSchema = z
   })
   .superRefine(checkDates)
 
+const { budgetMinor: budgetField, ...detailFields } = tripFields
+
+/**
+ * Trip details any member may edit. The budget is deliberately not here:
+ * it has its own leader-only endpoint (PATCH /trips/:tripId/budget).
+ */
 export const updateTripSchema = z
   // No defaults here, so a PATCH never resets fields it didn't send.
-  .object(Object.fromEntries(Object.entries(tripFields).map(([key, schema]) => [key, schema.optional()])))
+  .strictObject(Object.fromEntries(Object.entries(detailFields).map(([key, schema]) => [key, schema.optional()])), {
+    error: (issue) => (issue.code === 'unrecognized_keys' && issue.keys.includes('budgetMinor') ? 'Only the team leader can change the budget' : undefined),
+  })
   .refine((value) => Object.values(value).some((v) => v !== undefined), 'Nothing to update')
   .refine((value) => (value.startDate === undefined) === (value.endDate === undefined), {
     path: ['endDate'],
     message: 'Send startDate and endDate together',
   })
   .superRefine(checkDates)
+
+export const budgetSchema = z.object({ budgetMinor: budgetField })
 
 export const tripParams = z.object({ tripId: uuidParam })
 export const memberParams = z.object({ tripId: uuidParam, userId: uuidParam })

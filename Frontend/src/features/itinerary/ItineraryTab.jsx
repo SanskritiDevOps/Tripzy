@@ -14,13 +14,14 @@ import { useTripContext } from '../trips/useTripContext'
 import { useVoteSummary } from '../../store/selectors'
 import { useTripzyStore } from '../../store/useTripzyStore'
 import { toast } from '../../store/useToastStore'
-import { formatDate, formatDuration, timeToMinutes, todayIso, weekday } from '../../utils/dates'
+import { addDays, formatDate, formatDuration, timeToMinutes, todayIso, weekday } from '../../utils/dates'
+import { tripsApi } from '../../api/endpoints'
 import { formatMoney } from '../../utils/money'
 import { nextSlot } from '../../utils/planner'
 import { PLACE_CATEGORIES } from '../../data/categories'
 
 export default function ItineraryTab() {
-  const { trip, places, placesById, itinerary, isOwner } = useTripContext()
+  const { trip, places, placesById, itinerary, permissions } = useTripContext()
   const { totals, ranked } = useVoteSummary(trip.id)
   const reorderDay = useTripzyStore((s) => s.reorderDay)
   const deleteItineraryItem = useTripzyStore((s) => s.deleteItineraryItem)
@@ -131,12 +132,18 @@ export default function ItineraryTab() {
               </button>
             )
           })}
-          {isOwner && (
+          {permissions.canEditTripDetails && (
             <button
               type="button"
-              onClick={() => {
-                addDay(trip.id)
-                toast.success('Added a day to the end of the trip.')
+              onClick={async () => {
+                try {
+                  // Server trips: dates live in the API (any member may change them).
+                  if (trip.remote) await tripsApi.update(trip.id, { startDate: trip.startDate, endDate: addDays(trip.endDate, 1) })
+                  addDay(trip.id)
+                  toast.success('Added a day to the end of the trip.')
+                } catch (error) {
+                  if (error.status !== 401) toast.error(error.details?.endDate ?? error.message)
+                }
               }}
               className="flex shrink-0 items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-sand-300 px-4 py-2.5 text-sm font-semibold text-slate-500 transition-colors hover:border-ocean-400 hover:text-ocean-700 lg:w-full"
             >
@@ -216,6 +223,8 @@ export default function ItineraryTab() {
                 toast.info(`${placesById[item.placeId]?.name ?? 'Stop'} removed from Day ${selectedDay.dayNumber}.`)
               }}
               onToggleLock={(item) => toggleItemLock(item.id)}
+              canLock={permissions.isLeader}
+              canEditStop={permissions.canEditStop}
             />
           )}
           {items.length > 1 && (
@@ -283,6 +292,7 @@ export default function ItineraryTab() {
       </aside>
 
       <StopFormModal
+        canLock={permissions.isLeader}
         open={Boolean(stopModal)}
         onClose={() => setStopModal(null)}
         trip={trip}

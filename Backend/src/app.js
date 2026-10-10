@@ -8,6 +8,7 @@ import { logger } from './config/logger.js'
 import { prisma } from './config/prisma.js'
 import { authRouter } from './modules/auth/auth.routes.js'
 import { tripsRouter } from './modules/trips/trips.routes.js'
+import { publicInvitesRouter } from './modules/invites/invites.routes.js'
 import { errorHandler, notFound } from './middleware/errorHandler.js'
 
 export function createApp() {
@@ -49,6 +50,7 @@ export function createApp() {
 
   app.use('/api/auth', authRouter)
   app.use('/api/trips', tripsRouter)
+  app.use('/api/invites', publicInvitesRouter)
 
   app.use(notFound)
   app.use(errorHandler)

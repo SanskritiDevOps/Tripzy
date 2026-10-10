@@ -65,9 +65,48 @@ export async function register({ name, email, password }, meta = {}) {
   }
 }
 
+/**
+ * Signs in with a verified Google profile. Lookup order:
+ *  1. an account already linked to this Google id
+ *  2. an account with the same (Google-verified) email → link it
+ *  3. otherwise create a new account with no password
+ */
+export async function loginWithGoogle(profile, meta = {}) {
+  let user = await prisma.user.findUnique({ where: { googleId: profile.googleId } })
+  let isNewUser = false
+
+  if (!user) {
+    const byEmail = await prisma.user.findUnique({ where: { email: profile.email } })
+    if (byEmail) {
+      if (byEmail.googleId && byEmail.googleId !== profile.googleId) {
+        throw AppError.conflict('This email is linked to a different Google account.', { code: 'GOOGLE_ACCOUNT_MISMATCH' })
+      }
+      user = await prisma.user.update({
+        where: { id: byEmail.id },
+        data: { googleId: profile.googleId, avatarUrl: byEmail.avatarUrl ?? profile.avatarUrl },
+      })
+    } else {
+      try {
+        user = await prisma.user.create({
+          data: { name: profile.name.slice(0, 80), email: profile.email, googleId: profile.googleId, avatarUrl: profile.avatarUrl },
+        })
+        isNewUser = true
+      } catch (error) {
+        // Double-click on the Google button: the first request already created it.
+        if (error.code !== 'P2002') throw error
+        user = await prisma.user.findUnique({ where: { googleId: profile.googleId } })
+        if (!user) throw error
+      }
+    }
+  }
+
+  return { ...(await issueSession(user, meta)), isNewUser }
+}
+
 export async function login({ email, password }, meta = {}) {
   const user = await prisma.user.findUnique({ where: { email } })
   const valid = await bcrypt.compare(password, user?.passwordHash ?? DUMMY_HASH)
+  // Google-only accounts have no password and fail here like any wrong password.
   if (!user || !user.passwordHash || !valid) {
     throw AppError.unauthorized('Invalid email or password.', { code: 'INVALID_CREDENTIALS' })
   }

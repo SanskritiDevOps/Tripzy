@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import clsx from 'clsx'
-import { ArrowRight, CheckCheck, HandCoins, PieChart, Plus, Receipt, Scale, Pencil, Trash2, Wallet, CalendarRange } from 'lucide-react'
+import { ArrowRight, CheckCheck, HandCoins, Lock, PieChart, Plus, Receipt, Scale, Pencil, Trash2, Wallet, CalendarRange } from 'lucide-react'
 import { Button } from '../../components/ui/Button'
 import { Card, CardHeader, ProgressBar } from '../../components/ui/Card'
 import { Avatar } from '../../components/ui/Avatar'
@@ -9,6 +9,7 @@ import { Menu } from '../../components/ui/Menu'
 import { EmptyState } from '../../components/ui/States'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { ExpenseFormModal } from './ExpenseFormModal'
+import { BudgetModal } from './BudgetModal'
 import { useTripContext } from '../trips/useTripContext'
 import { useBalances } from '../../store/selectors'
 import { useTripzyStore } from '../../store/useTripzyStore'
@@ -18,7 +19,7 @@ import { formatMoney } from '../../utils/money'
 import { relativeTime } from '../../utils/dates'
 
 export default function ExpensesTab() {
-  const { trip, members, expenses, itinerary, currentUserId, usersById } = useTripContext()
+  const { trip, members, expenses, itinerary, currentUserId, usersById, permissions } = useTripContext()
   const { balances, suggested, settlements } = useBalances(trip.id)
   const recordSettlement = useTripzyStore((s) => s.recordSettlement)
   const deleteExpense = useTripzyStore((s) => s.deleteExpense)
@@ -27,6 +28,7 @@ export default function ExpensesTab() {
   const [deleting, setDeleting] = useState(null)
   const [settling, setSettling] = useState(null)
   const [filter, setFilter] = useState('all')
+  const [editingBudget, setEditingBudget] = useState(false)
 
   const spent = expenses.reduce((s, e) => s + e.amountMinor, 0)
   const me = balances.find((b) => b.userId === currentUserId)
@@ -52,9 +54,20 @@ export default function ExpensesTab() {
       {/* ── Summary ─────────────────────────────────────────── */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="p-5">
-          <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
-            <Wallet className="size-3.5" /> Group spend
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="flex items-center gap-1.5 text-xs font-semibold tracking-wide text-slate-500 uppercase">
+              <Wallet className="size-3.5" /> Group spend
+            </p>
+            {permissions.canSetBudget ? (
+              <Button size="sm" variant="ghost" icon={Pencil} className="ml-auto -mr-2 h-7" onClick={() => setEditingBudget(true)}>
+                {trip.budgetMinor > 0 ? 'Edit budget' : 'Set budget'}
+              </Button>
+            ) : (
+              <Badge icon={Lock} className="ml-auto" tone="neutral">
+                Set by Team Leader
+              </Badge>
+            )}
+          </div>
           <p className="mt-2 font-display text-3xl font-semibold">{formatMoney(spent)}</p>
           {trip.budgetMinor > 0 ? (
             <>
@@ -65,7 +78,9 @@ export default function ExpensesTab() {
               </p>
             </>
           ) : (
-            <p className="mt-1 text-xs text-slate-500">Set a budget in trip settings to track it here.</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {permissions.canSetBudget ? 'Set a budget to track spending against it.' : 'The team leader hasn’t set a budget yet.'}
+            </p>
           )}
         </Card>
 
@@ -294,6 +309,7 @@ export default function ExpensesTab() {
         </aside>
       </div>
 
+      <BudgetModal open={editingBudget} onClose={() => setEditingBudget(false)} trip={trip} spentMinor={spent} />
       <ExpenseFormModal open={Boolean(expenseModal)} onClose={() => setExpenseModal(null)} trip={trip} members={members} currentUserId={currentUserId} expense={expenseModal?.expense} />
       <ConfirmDialog
         open={Boolean(deleting)}

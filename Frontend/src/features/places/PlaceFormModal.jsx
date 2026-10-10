@@ -8,7 +8,7 @@ import { Combobox } from '../../components/ui/Combobox'
 import { CategoryIcon } from '../../components/ui/Badge'
 import { PLACE_CATEGORIES, PLACE_CATEGORY_KEYS } from '../../data/categories'
 import { formatDuration } from '../../utils/dates'
-import { useTripzyStore } from '../../store/useTripzyStore'
+import { usePlaceActions } from './usePlaceActions'
 import { toast } from '../../store/useToastStore'
 import { customPlaceDraft, searchNewPlaces } from './placeSearch'
 
@@ -17,8 +17,8 @@ export function PlaceFormModal({ open, onClose, ...props }) {
 }
 
 function PlaceForm({ onClose, trip, places, place = null, draft = null }) {
-  const addPlace = useTripzyStore((s) => s.addPlace)
-  const updatePlace = useTripzyStore((s) => s.updatePlace)
+  const placeActions = usePlaceActions(trip)
+  const [saving, setSaving] = useState(false)
   const isEdit = Boolean(place)
   const source = place ?? draft
 
@@ -35,7 +35,7 @@ function PlaceForm({ onClose, trip, places, place = null, draft = null }) {
   const [errors, setErrors] = useState({})
   const update = (patch) => setForm((f) => ({ ...f, ...patch }))
 
-  function save(event) {
+  async function save(event) {
     event?.preventDefault()
     const next = {}
     if (form.name.trim().length < 2) next.name = 'Give the place a name'
@@ -48,21 +48,30 @@ function PlaceForm({ onClose, trip, places, place = null, draft = null }) {
     const located = form.lat == null ? customPlaceDraft(form.name, form.category, trip, places) : form
     const payload = {
       name: form.name,
-      address: form.address || located.address,
+      address: (form.address || located.address || '').trim(),
       lat: located.lat,
       lng: located.lng,
       category: form.category,
       durationMinutes: duration,
       notes: form.notes,
     }
-    if (isEdit) {
-      updatePlace(place.id, { ...payload, name: payload.name.trim(), notes: payload.notes.trim() })
-      toast.success('Place updated.')
-    } else {
-      addPlace(trip.id, payload)
-      toast.success(`${payload.name.trim()} added to the board.`)
+    payload.name = payload.name.trim()
+    payload.notes = payload.notes.trim()
+    setSaving(true)
+    try {
+      if (isEdit) {
+        await placeActions.updatePlace(place.id, payload)
+        toast.success('Place updated.')
+      } else {
+        await placeActions.addPlace(payload)
+        toast.success(`${payload.name} added to the board.`)
+      }
+      onClose()
+    } catch (error) {
+      // e.g. 403 "This place is locked by the team leader and cannot be modified."
+      if (error.status !== 401) toast.error(error.message)
+      setSaving(false)
     }
-    onClose()
   }
 
   return (
@@ -77,7 +86,9 @@ function PlaceForm({ onClose, trip, places, place = null, draft = null }) {
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={save}>{isEdit ? 'Save place' : 'Add to board'}</Button>
+          <Button onClick={save} loading={saving}>
+            {isEdit ? 'Save place' : 'Add to board'}
+          </Button>
         </>
       }
     >

@@ -1,5 +1,7 @@
 import { env } from '../../config/env.js'
 import * as authService from './auth.service.js'
+import { isGoogleEnabled, verifyGoogleIdToken } from './google.js'
+import { AppError } from '../../utils/AppError.js'
 
 export const REFRESH_COOKIE = 'tripzy_rt'
 
@@ -32,6 +34,21 @@ export async function login(req, res) {
   const session = await authService.login(req.body, meta(req))
   req.log.info({ userId: session.user.id }, 'user logged in')
   sendSession(res, 200, session)
+}
+
+export async function google(req, res) {
+  if (!isGoogleEnabled()) throw new AppError(404, 'Google sign-in is not enabled on this server.', { code: 'GOOGLE_DISABLED' })
+  const profile = await verifyGoogleIdToken(req.body.credential)
+  const { isNewUser, ...session } = await authService.loginWithGoogle(profile, meta(req))
+  req.log.info({ userId: session.user.id, isNewUser }, 'user signed in with Google')
+  sendSession(res, isNewUser ? 201 : 200, session)
+}
+
+/** Which sign-in methods the frontend should offer. Client IDs are public by design. */
+export function providers(_req, res) {
+  // Revalidate every time so enabling or disabling Google shows up immediately.
+  res.set('Cache-Control', 'no-cache')
+  res.json({ password: true, google: isGoogleEnabled() ? { clientId: env.GOOGLE_CLIENT_ID } : null })
 }
 
 export async function refresh(req, res) {

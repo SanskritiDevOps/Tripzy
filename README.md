@@ -91,7 +91,18 @@ Features are grouped by priority. Build **P0 first**, then P1, then pick a few f
 #### 4.2 Trips and Members
 - Create a trip with name, destination, start date, and end date
 - Invite via a shareable link (with an expiry) or by email
-- Roles: **Owner** (can edit trip settings, remove members, delete the trip) and **Member**
+- Roles: **Team Leader** (the creator) and **Member** (invited editor)
+
+  | Action | Leader | Member |
+  |---|:---:|:---:|
+  | Edit trip details (name, destination, dates), add places, edit/delete **unlocked** places and stops | ✅ | ✅ |
+  | Lock / unlock places and itinerary stops | ✅ | — |
+  | Set or change the trip budget | ✅ | — |
+  | Invite people, cancel invites, remove members | ✅ | — |
+  | Delete the trip | ✅ | — |
+  | Leave the trip | — | ✅ |
+
+  A member who tries to change a locked place gets `403` with *"This place is locked by the team leader and cannot be modified."* The API enforces every rule; the UI only hides what you can't do.
 - View all trips you belong to
 - Leave a trip, or remove a member (owner only)
 
@@ -292,7 +303,7 @@ Features are grouped by priority. Build **P0 first**, then P1, then pick a few f
 |---|---|---|
 | trip_id | UUID (FK) | |
 | user_id | UUID (FK) | |
-| role | enum | `OWNER` / `MEMBER` |
+| role | enum | `LEADER` / `MEMBER` |
 | joined_at | timestamp | |
 | | | PK = (trip_id, user_id) |
 
@@ -422,6 +433,8 @@ All routes are prefixed with `/api`. Every route except auth and invite preview 
 | POST | `/auth/login` | Log in, receive tokens |
 | POST | `/auth/refresh` | Get a new access token |
 | POST | `/auth/logout` | Invalidate refresh token |
+| POST | `/auth/google` | Sign in or sign up with a Google ID token (optional) |
+| GET | `/auth/providers` | Which sign-in methods are enabled |
 | GET | `/auth/me` | Current user |
 
 ### Trips and Members
@@ -430,19 +443,24 @@ All routes are prefixed with `/api`. Every route except auth and invite preview 
 | POST | `/trips` | Create a trip |
 | GET | `/trips` | List my trips |
 | GET | `/trips/:tripId` | Trip details |
-| PATCH | `/trips/:tripId` | Update trip (owner) |
-| DELETE | `/trips/:tripId` | Delete trip (owner) |
-| POST | `/trips/:tripId/invites` | Create invite link |
-| POST | `/invites/:token/join` | Join via invite |
-| DELETE | `/trips/:tripId/members/:userId` | Remove member (owner) or leave |
+| PATCH | `/trips/:tripId` | Update trip details (any member; not the budget) |
+| PATCH | `/trips/:tripId/budget` | Set the budget (leader) |
+| DELETE | `/trips/:tripId` | Delete trip (leader) |
+| POST | `/trips/:tripId/invites` | Invite by email; emails a `/join-trip?token=…` link (leader) |
+| GET | `/trips/:tripId/invites` | Pending invites (leader) |
+| DELETE | `/trips/:tripId/invites/:inviteId` | Cancel an invite (leader) |
+| GET | `/invites/:token` | Public invite preview for the join page |
+| POST | `/trips/join` | Accept an invite (`{ token }`; your email must match the invite) |
+| DELETE | `/trips/:tripId/members/:userId` | Remove member (leader) or leave |
 
 ### Places and Votes
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/trips/:tripId/places` | List places with vote totals |
 | POST | `/trips/:tripId/places` | Add a place |
-| PATCH | `/places/:placeId` | Edit a place |
-| DELETE | `/places/:placeId` | Delete a place |
+| PATCH | `/trips/:tripId/places/:placeId` | Edit a place (members: unlocked only) |
+| DELETE | `/trips/:tripId/places/:placeId` | Delete a place (members: unlocked only) |
+| PATCH | `/trips/:tripId/places/:placeId/lock` | Lock or unlock a place (`{ locked }`, leader) |
 | PUT | `/places/:placeId/vote` | Cast or change a vote |
 | DELETE | `/places/:placeId/vote` | Remove my vote |
 | GET | `/search/places?q=` | Search places (proxy to geocoding API) |
@@ -550,7 +568,7 @@ Use locks for the UX and versioning as the safety net.
 ### 10.6 Authorization everywhere
 - Every REST route checks trip membership through middleware.
 - Every Socket.IO room join checks membership.
-- Owner-only actions (delete trip, remove member) check the role.
+- Leader-only actions (budget, locks, invites, removing members, deleting the trip) check the role via `requireTripAccess([LEADER])`.
 
 ---
 
@@ -697,6 +715,10 @@ ACCESS_TOKEN_TTL=15m            # short-lived JWT sent as a Bearer token
 REFRESH_TOKEN_TTL_DAYS=7        # opaque refresh token in an httpOnly cookie, hashed in the DB, rotated on use
 COOKIE_SAMESITE=lax             # "none" when frontend and API are on different sites (HTTPS only)
 TRUST_PROXY=0                   # 1 behind Render/Railway so rate limits see real IPs
+GOOGLE_CLIENT_ID=               # optional: enables "Continue with Google" (see below)
+SMTP_URL=                       # optional: e.g. smtps://user:pass@smtp.example.com:465; empty = invite emails are logged
+MAIL_FROM=Tripzy <no-reply@tripzy.app>
+APP_URL=http://localhost:5173   # used in invite links (defaults to the first CLIENT_URL)
 
 LLM_PROVIDER=gemini
 LLM_API_KEY=your-key
@@ -714,6 +736,8 @@ VITE_DEV_API_TARGET=http://localhost:5000
 ```
 
 Both folders have a `.env.example` with these keys.
+
+**Enabling Google sign-in (optional).** In Google Cloud Console → APIs & Services → Credentials, create an *OAuth client ID* of type **Web application**. Add your frontend origins (`http://localhost:5173` and `http://localhost` for dev, plus the production URL) under **Authorized JavaScript origins**; no redirect URI is needed. Put the client ID in `Backend/.env` as `GOOGLE_CLIENT_ID` and restart the API. The frontend reads it from `GET /api/auth/providers`, so there's nothing to set on the frontend, and the button stays hidden while the variable is empty.
 
 ---
 

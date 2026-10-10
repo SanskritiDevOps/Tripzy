@@ -16,6 +16,7 @@ import { useTripzyStore } from '../../store/useTripzyStore'
 import { toast } from '../../store/useToastStore'
 import { PLACE_CATEGORIES, PLACE_CATEGORY_KEYS } from '../../data/categories'
 import { tripCenter } from './placeSearch'
+import { usePlaceActions } from './usePlaceActions'
 
 function votingState(trip) {
   if (!trip.votingDeadline) return { open: true, label: 'Voting is open', detail: 'No deadline set' }
@@ -27,11 +28,10 @@ function votingState(trip) {
 }
 
 export default function PlacesTab() {
-  const { trip, places, itinerary, isOwner, currentUserId, usersById } = useTripContext()
+  const { trip, places, itinerary, permissions, usersById } = useTripContext()
   const { totals, myVotes, ranked } = useVoteSummary(trip.id)
   const castVote = useTripzyStore((s) => s.castVote)
-  const deletePlace = useTripzyStore((s) => s.deletePlace)
-  const closeVoting = useTripzyStore((s) => s.closeVoting)
+  const placeActions = usePlaceActions(trip)
   const reopenVoting = useTripzyStore((s) => s.reopenVoting)
 
   const [category, setCategory] = useState('all')
@@ -75,6 +75,16 @@ export default function PlacesTab() {
     title: p.name,
     subtitle: `${PLACE_CATEGORIES[p.category]?.label} · score ${totals[p.id]?.score ?? 0}`,
   }))
+
+  /** Runs a place action and reports API errors (e.g. the 403 lock message) as a toast. */
+  async function run(action, success) {
+    try {
+      await action()
+      if (success) toast.success(success)
+    } catch (error) {
+      if (error.status !== 401) toast.error(error.message)
+    }
+  }
 
   function vote(place, value) {
     const result = castVote(place.id, value)
@@ -121,7 +131,7 @@ export default function PlacesTab() {
             <p className="mt-0.5 text-sm text-slate-500">Vote on places to build the group’s “Most popular” list.</p>
           )}
         </div>
-        {isOwner &&
+        {permissions.canManageVoting &&
           (voting.open ? (
             <Button variant="secondary" size="sm" icon={Hourglass} onClick={() => setConfirmClose(true)}>
               Close voting
@@ -223,7 +233,11 @@ export default function PlacesTab() {
                   myVote={myVotes[place.id]}
                   addedBy={usersById[place.addedBy]}
                   scheduledDay={scheduledDayOf[place.id]}
-                  canEdit={isOwner || place.addedBy === currentUserId}
+                  canEdit={permissions.canEditPlace(place)}
+                  canLock={permissions.canLockPlace}
+                  onToggleLock={() =>
+                    run(() => placeActions.setLock(place.id, !place.isLocked), place.isLocked ? `${place.name} unlocked.` : `${place.name} locked — only you can change it now.`)
+                  }
                   votingOpen={voting.open}
                   selected={selectedId === place.id}
                   onSelect={() => setSelectedId(place.id)}
@@ -241,6 +255,7 @@ export default function PlacesTab() {
 
       <PlaceFormModal open={Boolean(placeModal)} onClose={() => setPlaceModal(null)} trip={trip} places={places} place={placeModal?.place} />
       <StopFormModal
+        canLock={permissions.isLeader}
         open={Boolean(scheduling)}
         onClose={() => setScheduling(null)}
         trip={trip}
@@ -256,8 +271,8 @@ export default function PlacesTab() {
         description="Its votes are removed and it’s taken out of the itinerary for everyone."
         confirmLabel="Delete place"
         onConfirm={() => {
-          deletePlace(deleting.id)
-          toast.success(`${deleting.name} deleted.`)
+          const target = deleting
+          run(() => placeActions.deletePlace(target.id), `${target.name} deleted.`)
         }}
       />
       <ConfirmDialog
@@ -268,8 +283,8 @@ export default function PlacesTab() {
         description="Every place with a positive score is locked in as a winner. You can reopen voting later."
         confirmLabel="Close voting"
         onConfirm={() => {
-          closeVoting(trip.id)
-          toast.success('Voting closed — winners are locked.')
+          const winners = ranked.filter((p) => (totals[p.id]?.score ?? 0) > 0 && !p.isLocked).map((p) => p.id)
+          run(() => placeActions.closeVoting(winners), 'Voting closed — winners are locked.')
         }}
       />
     </div>

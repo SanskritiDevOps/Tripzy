@@ -22,7 +22,11 @@ import { formatMoney } from '../../utils/money'
 import { findOverlaps } from '../../utils/planner'
 import { PLACE_CATEGORIES } from '../../data/categories'
 
-export function DayTimeline({ items, placesById, onReorder, onEdit, onDelete, onToggleLock }) {
+/**
+ * canLock            → team leader: may lock/unlock time slots
+ * canEditStop(i, p)  → false for members on locked stops or stops of locked places
+ */
+export function DayTimeline({ items, placesById, onReorder, onEdit, onDelete, onToggleLock, canLock = true, canEditStop = () => true }) {
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
@@ -55,6 +59,8 @@ export function DayTimeline({ items, placesById, onReorder, onEdit, onDelete, on
                   onEdit={() => onEdit(item)}
                   onDelete={() => onDelete(item)}
                   onToggleLock={() => onToggleLock(item)}
+                  canLock={canLock}
+                  editable={canEditStop(item, place)}
                   onMoveUp={index > 0 ? () => onReorder(arrayMove(ids, index, index - 1)) : null}
                   onMoveDown={next ? () => onReorder(arrayMove(ids, index, index + 1)) : null}
                 />
@@ -83,10 +89,11 @@ function TravelGap({ from, to, item, next }) {
   )
 }
 
-function SortableStop({ item, place, overlap, onEdit, onDelete, onToggleLock, onMoveUp, onMoveDown }) {
+function SortableStop({ item, place, overlap, onEdit, onDelete, onToggleLock, onMoveUp, onMoveDown, canLock, editable }) {
+  const fixed = item.isLocked || !editable
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
-    disabled: item.isLocked,
+    disabled: fixed,
   })
   const category = place?.category ?? 'other'
   const endTime = minutesToTime(timeToMinutes(item.startTime) + item.durationMinutes)
@@ -116,11 +123,11 @@ function SortableStop({ item, place, overlap, onEdit, onDelete, onToggleLock, on
             type="button"
             {...attributes}
             {...listeners}
-            disabled={item.isLocked}
-            aria-label={item.isLocked ? `${place?.name} is locked` : `Drag to reorder ${place?.name}`}
+            disabled={fixed}
+            aria-label={fixed ? `${place?.name} is locked` : `Drag to reorder ${place?.name}`}
             className={clsx(
               'mt-2 -ml-1 touch-none rounded-md p-0.5 text-slate-300',
-              item.isLocked ? 'cursor-not-allowed' : 'cursor-grab hover:text-slate-500 active:cursor-grabbing',
+              fixed ? 'cursor-not-allowed' : 'cursor-grab hover:text-slate-500 active:cursor-grabbing',
             )}
           >
             <GripVertical className="size-4" />
@@ -136,7 +143,7 @@ function SortableStop({ item, place, overlap, onEdit, onDelete, onToggleLock, on
               )}
               {item.isLocked && (
                 <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">
-                  <Lock className="size-2.5" /> Locked
+                  <Lock className="size-2.5" /> {canLock ? 'Locked' : 'Locked by Leader'}
                 </span>
               )}
             </div>
@@ -161,19 +168,21 @@ function SortableStop({ item, place, overlap, onEdit, onDelete, onToggleLock, on
             )}
           </div>
           <div className="flex shrink-0 items-center">
-            <IconButton
-              icon={item.isLocked ? Lock : LockOpen}
-              label={item.isLocked ? 'Unlock time slot' : 'Lock time slot'}
-              size="sm"
-              onClick={onToggleLock}
-              className={clsx(item.isLocked ? 'text-slate-700' : 'text-slate-300 opacity-100 sm:opacity-0 sm:group-hover:opacity-100')}
-            />
+            {canLock && (
+              <IconButton
+                icon={item.isLocked ? Lock : LockOpen}
+                label={item.isLocked ? 'Unlock time slot' : 'Lock time slot'}
+                size="sm"
+                onClick={onToggleLock}
+                className={clsx(item.isLocked ? 'text-slate-700' : 'text-slate-300 opacity-100 sm:opacity-0 sm:group-hover:opacity-100')}
+              />
+            )}
             <Menu
               items={[
-                { label: 'Edit stop', icon: Pencil, onClick: onEdit },
-                { label: 'Move up', icon: ArrowUp, onClick: onMoveUp, hidden: !onMoveUp || item.isLocked },
-                { label: 'Move down', icon: ArrowDown, onClick: onMoveDown, hidden: !onMoveDown || item.isLocked },
-                { label: 'Remove from day', icon: Trash2, onClick: onDelete, danger: true },
+                { label: 'Edit stop', icon: Pencil, onClick: onEdit, hidden: !editable },
+                { label: 'Move up', icon: ArrowUp, onClick: onMoveUp, hidden: !onMoveUp || fixed },
+                { label: 'Move down', icon: ArrowDown, onClick: onMoveDown, hidden: !onMoveDown || fixed },
+                { label: 'Remove from day', icon: Trash2, onClick: onDelete, danger: true, hidden: !editable },
               ]}
             />
           </div>

@@ -37,16 +37,18 @@ const schema = z
   })
 
 /** Create a trip (no `trip`) or edit an existing one (`trip` given). */
-export function TripFormModal({ open, onClose, trip = null, prefill = {} }) {
-  return open ? <TripForm onClose={onClose} trip={trip} prefill={prefill} /> : null
+export function TripFormModal({ open, onClose, trip = null, prefill = {}, permissions }) {
+  return open ? <TripForm onClose={onClose} trip={trip} prefill={prefill} permissions={permissions} /> : null
 }
 
-function TripForm({ onClose, trip, prefill }) {
+function TripForm({ onClose, trip, prefill, permissions }) {
   const navigate = useNavigate()
   const createTrip = useTripzyStore((s) => s.createTrip)
   const updateTrip = useTripzyStore((s) => s.updateTrip)
   const [destinationQuery, setDestinationQuery] = useState(trip?.destination ?? prefill.destination ?? '')
   const isEdit = Boolean(trip)
+  // New trips: the creator becomes leader. Existing trips: only the leader sets the budget.
+  const canSetBudget = !isEdit || Boolean(permissions?.canSetBudget)
 
   const start = trip?.startDate ?? prefill.start ?? addDays(todayIso(), 30)
   const {
@@ -82,10 +84,17 @@ function TripForm({ onClose, trip, prefill }) {
 
     try {
       if (isEdit) {
+        const { budgetMinor, ...details } = localPayload
+        const budgetChanged = canSetBudget && budgetMinor !== trip.budgetMinor
         // Trips stored on the server are saved there first; bundled demo trips are local only.
-        if (trip.remote) await tripsApi.update(trip.id, apiPayload)
+        // Details and budget are separate endpoints: any member may edit details, only the leader the budget.
+        if (trip.remote) {
+          const { name, destination, startDate, endDate, groupType } = apiPayload
+          await tripsApi.update(trip.id, { name, destination, startDate, endDate, groupType })
+          if (budgetChanged) await tripsApi.updateBudget(trip.id, budgetMinor)
+        }
         const shrinking = tripLength(values.startDate, values.endDate) < tripLength(trip.startDate, trip.endDate)
-        updateTrip(trip.id, localPayload)
+        updateTrip(trip.id, budgetChanged ? localPayload : details)
         toast.success(shrinking ? 'Trip updated. Days past the new end date were removed.' : 'Trip updated.')
         onClose()
       } else {
@@ -182,8 +191,24 @@ function TripForm({ onClose, trip, prefill }) {
         />
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Total budget" optional hint="For the whole group" error={errors.budget?.message}>
-            {({ id, invalid }) => <Input id={id} inputMode="decimal" prefix="₹" placeholder="1,20,000" invalid={invalid} {...register('budget')} />}
+          <Field
+            label="Total budget"
+            optional={canSetBudget}
+            hint={canSetBudget ? 'For the whole group' : 'Set by Team Leader'}
+            error={errors.budget?.message}
+          >
+            {({ id, invalid }) => (
+              <Input
+                id={id}
+                inputMode="decimal"
+                prefix="₹"
+                placeholder="1,20,000"
+                invalid={invalid}
+                disabled={!canSetBudget}
+                title={canSetBudget ? undefined : 'Only the team leader can change the budget'}
+                {...register('budget')}
+              />
+            )}
           </Field>
           <Field label="Travelling as">
             {({ id }) => (

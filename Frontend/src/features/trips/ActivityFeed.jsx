@@ -1,4 +1,4 @@
-import { Activity, CalendarCheck2, CircleDollarSign, HandCoins, MapPinPlus, MapPinX, Sparkles, ThumbsDown, ThumbsUp, UserPlus, Vote } from 'lucide-react'
+import { Activity, CalendarCheck2, Lock, LockOpen, CircleDollarSign, HandCoins, MapPinPlus, MapPinX, Sparkles, ThumbsDown, ThumbsUp, UserPlus, Vote } from 'lucide-react'
 import { Avatar } from '../../components/ui/Avatar'
 import { EmptyState } from '../../components/ui/States'
 import { formatMoney } from '../../utils/money'
@@ -13,6 +13,10 @@ function describe(entry, usersById) {
       return { icon: MapPinX, text: <>removed <b>{p.name}</b></> }
     case 'VOTED':
       return { icon: p.value > 0 ? ThumbsUp : ThumbsDown, text: <>{p.value > 0 ? 'upvoted' : 'downvoted'} <b>{p.name}</b></> }
+    case 'PLACE_LOCKED':
+      return { icon: Lock, text: <>locked <b>{p.name}</b></> }
+    case 'PLACE_UNLOCKED':
+      return { icon: LockOpen, text: <>unlocked <b>{p.name}</b></> }
     case 'VOTING_CLOSED':
       return { icon: Vote, text: <>closed voting and locked the winners</> }
     case 'EXPENSE_ADDED':

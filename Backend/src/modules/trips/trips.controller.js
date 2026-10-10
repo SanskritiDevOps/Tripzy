@@ -18,6 +18,12 @@ export async function update(req, res) {
   res.json({ trip: await tripsService.updateTrip(req.valid.params.tripId, req.user.id, req.body) })
 }
 
+export async function updateBudget(req, res) {
+  const trip = await tripsService.updateBudget(req.valid.params.tripId, req.user.id, req.body.budgetMinor)
+  req.log.info({ tripId: trip.id, userId: req.user.id, budgetMinor: trip.budgetMinor }, 'trip budget updated')
+  res.json({ trip })
+}
+
 export async function remove(req, res) {
   await tripsService.deleteTrip(req.valid.params.tripId)
   req.log.info({ tripId: req.valid.params.tripId, userId: req.user.id }, 'trip deleted')

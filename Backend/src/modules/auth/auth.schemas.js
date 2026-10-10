@@ -19,6 +19,11 @@ export const registerSchema = z.object({
   password: password.refine((value) => /[A-Za-z]/.test(value) && /\d/.test(value), 'Use at least one letter and one number'),
 })
 
+export const googleSchema = z.object({
+  // The ID token (JWT) returned by Google Identity Services.
+  credential: z.string({ error: 'Missing Google credential' }).min(20, 'Invalid Google credential').max(4096),
+})
+
 export const loginSchema = z.object({
   email,
   // Don't leak the password policy on login; just require something.

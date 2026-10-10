@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import clsx from 'clsx'
 
 const SIZES = {
@@ -12,19 +13,34 @@ function initials(name = '') {
   return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts.at(-1)[0] : '')).toUpperCase() || '?'
 }
 
+/** Profile photo when the user has one (e.g. from Google), otherwise coloured initials. */
 export function Avatar({ user, size = 'sm', online, ring = false, className }) {
+  const [failedUrl, setFailedUrl] = useState(null)
+  const photo = user?.avatarUrl && user.avatarUrl !== failedUrl ? user.avatarUrl : null
+
   return (
     <span className={clsx('relative inline-flex shrink-0', className)} title={user?.name}>
-      <span
-        className={clsx(
-          'grid place-items-center rounded-full font-semibold text-white',
-          user?.color ?? 'bg-slate-400',
-          SIZES[size],
-          ring && 'ring-2 ring-white',
-        )}
-      >
-        {initials(user?.name)}
-      </span>
+      {photo ? (
+        <img
+          src={photo}
+          alt=""
+          // Google profile photos refuse requests that send a Referer.
+          referrerPolicy="no-referrer"
+          onError={() => setFailedUrl(photo)}
+          className={clsx('rounded-full bg-sand-100 object-cover', SIZES[size], ring && 'ring-2 ring-white')}
+        />
+      ) : (
+        <span
+          className={clsx(
+            'grid place-items-center rounded-full font-semibold text-white',
+            user?.color ?? 'bg-slate-400',
+            SIZES[size],
+            ring && 'ring-2 ring-white',
+          )}
+        >
+          {initials(user?.name)}
+        </span>
+      )}
       {online !== undefined && (
         <span
           className={clsx(

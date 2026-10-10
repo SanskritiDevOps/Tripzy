@@ -13,6 +13,7 @@ import { nextSlot } from '../../utils/planner'
 import { useTripzyStore } from '../../store/useTripzyStore'
 import { toast } from '../../store/useToastStore'
 import { customPlaceDraft, searchNewPlaces } from '../places/placeSearch'
+import { usePlaceActions } from '../places/usePlaceActions'
 
 const DURATION_PRESETS = [30, 60, 90, 120, 180]
 
@@ -25,8 +26,8 @@ export function StopFormModal({ open, onClose, ...props }) {
   return open ? <StopForm onClose={onClose} {...props} /> : null
 }
 
-function StopForm({ onClose, trip, places, placesById, itinerary, item = null, initial = {} }) {
-  const addPlace = useTripzyStore((s) => s.addPlace)
+function StopForm({ onClose, trip, places, placesById, itinerary, item = null, initial = {}, canLock = false }) {
+  const placeActions = usePlaceActions(trip)
   const addItineraryItem = useTripzyStore((s) => s.addItineraryItem)
   const updateItineraryItem = useTripzyStore((s) => s.updateItineraryItem)
 
@@ -89,13 +90,19 @@ function StopForm({ onClose, trip, places, placesById, itinerary, item = null, i
     return Object.keys(next).length === 0
   }
 
-  function save(event) {
+  async function save(event) {
     event?.preventDefault()
     if (!validate()) return
 
     let placeId = selected.place.id
     if (selected.kind !== 'existing') {
-      placeId = addPlace(trip.id, selected.place)
+      // New places go to the server for saved trips (any member may add places).
+      try {
+        placeId = await placeActions.addPlace(selected.place)
+      } catch (error) {
+        if (error.status !== 401) toast.error(error.message)
+        return
+      }
     }
     const payload = {
       dayId: form.dayId,
@@ -104,7 +111,8 @@ function StopForm({ onClose, trip, places, placesById, itinerary, item = null, i
       durationMinutes: Number(form.duration),
       costMinor: form.cost ? toMinor(form.cost) : 0,
       notes: form.notes.trim(),
-      isLocked: form.isLocked,
+      // Only the team leader can lock or unlock a stop's time slot.
+      isLocked: canLock ? form.isLocked : (item?.isLocked ?? false),
     }
 
     if (isEdit) {
@@ -269,15 +277,17 @@ function StopForm({ onClose, trip, places, placesById, itinerary, item = null, i
             {({ id, invalid }) => <Input id={id} inputMode="decimal" prefix="₹" placeholder="0" value={form.cost} invalid={invalid} onChange={(e) => update({ cost: e.target.value })} />}
           </Field>
           <div className="flex items-end pb-2.5">
-            <Checkbox
-              checked={form.isLocked}
-              onChange={(e) => update({ isLocked: e.target.checked })}
-              label={
-                <span className="inline-flex items-center gap-1.5">
-                  <Lock className="size-3.5 text-slate-400" /> Lock this time slot
-                </span>
-              }
-            />
+            {canLock && (
+              <Checkbox
+                checked={form.isLocked}
+                onChange={(e) => update({ isLocked: e.target.checked })}
+                label={
+                  <span className="inline-flex items-center gap-1.5">
+                    <Lock className="size-3.5 text-slate-400" /> Lock this time slot
+                  </span>
+                }
+              />
+            )}
           </div>
         </div>
 

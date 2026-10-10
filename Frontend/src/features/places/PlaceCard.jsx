@@ -1,11 +1,16 @@
 import clsx from 'clsx'
-import { ArrowBigDown, ArrowBigUp, CalendarCheck2, CalendarPlus, Clock, Crown, Pencil, Trash2 } from 'lucide-react'
+import { ArrowBigDown, ArrowBigUp, CalendarCheck2, CalendarPlus, Clock, Lock, LockOpen, Pencil, Trash2 } from 'lucide-react'
+import { IconButton } from '../../components/ui/Button'
 import { Avatar } from '../../components/ui/Avatar'
 import { CategoryBadge, CategoryIcon } from '../../components/ui/Badge'
 import { Menu } from '../../components/ui/Menu'
 import { formatDuration, relativeTime } from '../../utils/dates'
 
-export function PlaceCard({ place, rank, totals, myVote, addedBy, scheduledDay, canEdit, votingOpen, selected, onVote, onEdit, onDelete, onSchedule, onSelect }) {
+/**
+ * canEdit  → may edit/delete (false for members on locked places)
+ * canLock  → team leader: shows the lock toggle
+ */
+export function PlaceCard({ place, rank, totals, myVote, addedBy, scheduledDay, canEdit, canLock, votingOpen, selected, onVote, onEdit, onDelete, onSchedule, onSelect, onToggleLock }) {
   const score = totals?.score ?? 0
 
   return (
@@ -71,14 +76,27 @@ export function PlaceCard({ place, rank, totals, myVote, addedBy, scheduledDay, 
               )}
               <h3 className="truncate font-semibold text-slate-900">{place.name}</h3>
               {place.isLocked && (
-                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 ring-1 ring-amber-200">
-                  <Crown className="size-2.5" /> Winner
+                <span
+                  className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 ring-1 ring-amber-200"
+                  title={canLock ? 'Locked — only you can edit or delete it' : 'Only the team leader can edit or delete this place'}
+                >
+                  <Lock className="size-2.5" /> Locked by Leader
                 </span>
               )}
             </div>
             <p className="truncate text-xs text-slate-500">{place.address}</p>
           </div>
-          <div onClick={(e) => e.stopPropagation()}>
+          <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+            {canLock && (
+              <IconButton
+                icon={place.isLocked ? Lock : LockOpen}
+                label={place.isLocked ? `Unlock ${place.name}` : `Lock ${place.name}`}
+                size="sm"
+                aria-pressed={place.isLocked}
+                onClick={onToggleLock}
+                className={place.isLocked ? 'text-amber-700' : 'text-slate-400'}
+              />
+            )}
             <Menu
               items={[
                 { label: scheduledDay ? `In Day ${scheduledDay}` : 'Add to itinerary', icon: CalendarPlus, onClick: onSchedule, hidden: Boolean(scheduledDay) },
