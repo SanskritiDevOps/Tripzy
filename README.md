@@ -688,11 +688,15 @@ NODE_ENV=development
 PORT=5000
 CLIENT_URL=http://localhost:5173
 
-DATABASE_URL=postgresql://tripzy:tripzy@localhost:5432/tripzy
+DATABASE_URL=postgresql://tripzy:tripzy@localhost:5432/tripzy?schema=public
+TEST_DATABASE_URL=postgresql://tripzy:tripzy@localhost:5432/tripzy_test?schema=public
 REDIS_URL=redis://localhost:6379
 
-JWT_ACCESS_SECRET=change-me
-JWT_REFRESH_SECRET=change-me-too
+JWT_ACCESS_SECRET=at-least-32-random-characters
+ACCESS_TOKEN_TTL=15m            # short-lived JWT sent as a Bearer token
+REFRESH_TOKEN_TTL_DAYS=7        # opaque refresh token in an httpOnly cookie, hashed in the DB, rotated on use
+COOKIE_SAMESITE=lax             # "none" when frontend and API are on different sites (HTTPS only)
+TRUST_PROXY=0                   # 1 behind Render/Railway so rate limits see real IPs
 
 LLM_PROVIDER=gemini
 LLM_API_KEY=your-key
@@ -705,9 +709,11 @@ EMAIL_API_KEY=optional
 
 **Frontend/.env**
 ```
-VITE_API_URL=http://localhost:5000/api
-VITE_SOCKET_URL=http://localhost:5000
+VITE_API_URL=/api                          # dev: proxied by Vite to the API; prod: full URL
+VITE_DEV_API_TARGET=http://localhost:5000
 ```
+
+Both folders have a `.env.example` with these keys.
 
 ---
 
@@ -721,13 +727,15 @@ cd tripzy
 # 2. Start Postgres and Redis
 docker compose up -d
 
-# 3. Backend
+# 3. Backend (Node 22.6+; the generated Prisma client is TypeScript, run via Node's type stripping)
 cd Backend
-cp .env.example .env        # fill in values
-npm install
-npx prisma migrate dev     # creates tables
-npx prisma generate        # generates the client into generated/prisma
+cp .env.example .env        # set JWT_ACCESS_SECRET
+npm install                 # also runs prisma generate
+docker compose exec postgres psql -U tripzy -c "CREATE DATABASE tripzy_test;"   # once, for npm test
+npm run db:migrate          # creates tables
+npm run db:seed             # demo login: demo@tripzy.app / tripzy-demo-123
 npm run dev
+npm test                    # API tests against tripzy_test
 
 # 4. Frontend (new terminal)
 cd ../Frontend

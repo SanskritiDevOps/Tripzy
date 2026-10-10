@@ -8,13 +8,13 @@ import { Button } from '../../components/ui/Button'
 import { DESTINATIONS } from '../../data/destinations'
 import { GROUP_TYPES } from '../../data/categories'
 import { addDays, daysBetween, todayIso } from '../../utils/dates'
-import { useCurrentUser } from '../../store/selectors'
-import { buildNewTripUrl } from '../../utils/urls'
+import { useAuthStore } from '../../store/useAuthStore'
+import { buildNewTripUrl, loginPath } from '../../utils/urls'
 
 
 export function HeroSearch({ destination, onDestinationChange }) {
   const navigate = useNavigate()
-  const user = useCurrentUser()
+  const signedIn = useAuthStore((s) => s.status === 'authenticated')
   const [dates, setDates] = useState(() => ({ start: addDays(todayIso(), 30), end: addDays(todayIso(), 33) }))
   const [group, setGroup] = useState('friends')
   const [error, setError] = useState('')
@@ -25,7 +25,8 @@ export function HeroSearch({ destination, onDestinationChange }) {
     if (!dates.start || !dates.end || daysBetween(dates.start, dates.end) < 0) return setError('Pick valid travel dates.')
     setError('')
     const target = buildNewTripUrl({ destination: destination.trim(), start: dates.start, end: dates.end, group })
-    navigate(user ? target : '/signup', { state: { from: target } })
+    // Planning needs an account: anonymous users log in first and come straight back.
+    navigate(signedIn ? target : loginPath(target))
   }
 
   return (

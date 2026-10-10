@@ -5,6 +5,7 @@ import { Compass, Luggage, LogOut, Menu, RotateCcw, X, ChevronDown, Plus } from 
 import { Logo } from './Logo'
 import { Avatar } from '../ui/Avatar'
 import { Button } from '../ui/Button'
+import { useAuthStore } from '../../store/useAuthStore'
 import { useCurrentUser } from '../../store/selectors'
 import { useTripzyStore } from '../../store/useTripzyStore'
 import { toast } from '../../store/useToastStore'
@@ -15,8 +16,11 @@ const LINKS = [
 ]
 
 export function Navbar({ transparent = false }) {
-  const user = useCurrentUser()
-  const logout = useTripzyStore((s) => s.logout)
+  const sessionUser = useAuthStore((s) => s.user)
+  const localProfile = useCurrentUser()
+  // Profile comes from the API; the avatar colour from the local trip data.
+  const user = sessionUser ? { ...sessionUser, color: localProfile?.color } : null
+  const logout = useAuthStore((s) => s.logout)
   const resetDemo = useTripzyStore((s) => s.resetDemo)
   const navigate = useNavigate()
   const location = useLocation()
@@ -52,9 +56,14 @@ export function Navbar({ transparent = false }) {
     }
   }, [menuOpen])
 
-  function handleLogout() {
-    logout()
-    toast.info('You’ve been logged out.')
+  async function handleLogout() {
+    try {
+      await logout()
+      toast.info('You’ve been logged out.')
+    } catch {
+      // Local session is cleared even if the server couldn't be reached.
+      toast.info('Logged out on this device.')
+    }
     navigate('/')
   }
 

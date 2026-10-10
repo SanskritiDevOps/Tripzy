@@ -15,13 +15,13 @@ import {
   Vote,
 } from 'lucide-react'
 import { HeroSearch } from '../features/landing/HeroSearch'
-import { buildNewTripUrl } from '../utils/urls'
+import { buildNewTripUrl, loginPath } from '../utils/urls'
 import { HeroPreview } from '../features/landing/HeroPreview'
 import { DestinationCard } from '../features/landing/DestinationCard'
 import { Button } from '../components/ui/Button'
 import { Logo } from '../components/layout/Logo'
 import { DESTINATIONS } from '../data/destinations'
-import { useCurrentUser } from '../store/selectors'
+import { useAuthStore } from '../store/useAuthStore'
 import { addDays, todayIso } from '../utils/dates'
 
 const FEATURES = [
@@ -41,7 +41,7 @@ const STEPS = [
 
 export function LandingPage() {
   const navigate = useNavigate()
-  const user = useCurrentUser()
+  const user = useAuthStore((s) => s.user)
   const [destination, setDestination] = useState('')
   const trending = DESTINATIONS.filter((d) => d.trending)
 
@@ -52,7 +52,7 @@ export function LandingPage() {
       end: addDays(todayIso(), 33),
       group: 'friends',
     })
-    navigate(user ? target : '/signup', { state: { from: target } })
+    navigate(user ? target : loginPath(target))
   }
 
   return (
@@ -169,7 +169,7 @@ export function LandingPage() {
           <h2 className="mt-4 font-display text-3xl font-semibold text-white sm:text-4xl">Your next trip starts with one link</h2>
           <p className="mx-auto mt-3 max-w-lg text-ocean-100">Create a trip in under a minute and invite your crew. It’s free.</p>
           <div className="mt-7 flex flex-col justify-center gap-3 sm:flex-row">
-            <Button size="lg" variant="accent" iconRight={ArrowRight} to={user ? '/trips?new=1' : '/signup'}>
+            <Button size="lg" variant="accent" iconRight={ArrowRight} to={user ? '/trips?new=1' : loginPath('/trips?new=1', '/signup')}>
               {user ? 'Create a trip' : 'Get started free'}
             </Button>
             {user && (

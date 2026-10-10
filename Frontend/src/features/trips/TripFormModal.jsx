@@ -15,6 +15,8 @@ import { addDays, daysBetween, todayIso, tripLength } from '../../utils/dates'
 import { toInputValue, toMinor } from '../../utils/money'
 import { useTripzyStore } from '../../store/useTripzyStore'
 import { toast } from '../../store/useToastStore'
+import { tripsApi } from '../../api/endpoints'
+import { ApiError } from '../../api/client'
 
 const schema = z
   .object({
@@ -53,6 +55,7 @@ function TripForm({ onClose, trip, prefill }) {
     handleSubmit,
     setValue,
     getValues,
+    setError,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(schema),
@@ -67,26 +70,39 @@ function TripForm({ onClose, trip, prefill }) {
   })
 
   const onSubmit = handleSubmit(async (values) => {
-    await new Promise((r) => setTimeout(r, 250))
-    const payload = {
-      name: values.name,
-      destination: values.destination,
-      destinationId: findDestination(values.destination)?.id ?? null,
+    const apiPayload = {
+      name: values.name.trim(),
+      destination: values.destination.trim(),
       startDate: values.startDate,
       endDate: values.endDate,
       budgetMinor: values.budget ? toMinor(values.budget) : 0,
       groupType: values.groupType,
     }
-    if (isEdit) {
-      const shrinking = tripLength(values.startDate, values.endDate) < tripLength(trip.startDate, trip.endDate)
-      updateTrip(trip.id, payload)
-      toast.success(shrinking ? 'Trip updated. Days past the new end date were removed.' : 'Trip updated.')
-      onClose()
-    } else {
-      const id = createTrip(payload)
-      toast.success('Trip created! Invite your crew from the share button.')
-      onClose()
-      navigate(`/trips/${id}`)
+    const localPayload = { ...apiPayload, destinationId: findDestination(values.destination)?.id ?? null }
+
+    try {
+      if (isEdit) {
+        // Trips stored on the server are saved there first; bundled demo trips are local only.
+        if (trip.remote) await tripsApi.update(trip.id, apiPayload)
+        const shrinking = tripLength(values.startDate, values.endDate) < tripLength(trip.startDate, trip.endDate)
+        updateTrip(trip.id, localPayload)
+        toast.success(shrinking ? 'Trip updated. Days past the new end date were removed.' : 'Trip updated.')
+        onClose()
+      } else {
+        // POST /api/trips requires a logged-in user; the server makes them the owner.
+        const { trip: created } = await tripsApi.create(apiPayload)
+        createTrip({ ...localPayload, id: created.id, remote: true })
+        toast.success('Trip created! Invite your crew from the share button.')
+        onClose()
+        navigate(`/trips/${created.id}`)
+      }
+    } catch (error) {
+      if (!(error instanceof ApiError)) throw error
+      if (error.status === 401) return // handled globally: session cleared, redirected to /login
+      const fieldMap = { budgetMinor: 'budget' }
+      const fieldErrors = Object.entries(error.details ?? {}).filter(([field]) => (fieldMap[field] ?? field) in getValues())
+      fieldErrors.forEach(([field, message]) => setError(fieldMap[field] ?? field, { message }))
+      if (fieldErrors.length === 0) toast.error(error.message)
     }
   })
 

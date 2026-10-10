@@ -79,7 +79,27 @@ function expense(id, tripId, { title, amountMinor, paidBy, splitType, category, 
   }
 }
 
-export function createSeedData() {
+/** Replaces every exact `from` string value in a nested structure. */
+function rebindId(value, from, to) {
+  if (value === from) return to
+  if (Array.isArray(value)) return value.map((v) => rebindId(v, from, to))
+  if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, rebindId(v, from, to)]))
+  return value
+}
+
+/**
+ * Demo trips with `sessionUser` ({ id, name, email }) as the main traveller,
+ * so the logged-in account owns the Jaipur trip and is a member of the others.
+ */
+export function createSeedData(sessionUser) {
+  const data = buildSeed()
+  if (!sessionUser) return data
+  const rebound = rebindId(data, DEMO_USER_ID, sessionUser.id)
+  rebound.users = rebound.users.map((u) => (u.id === sessionUser.id ? { ...u, name: sessionUser.name, email: sessionUser.email } : u))
+  return rebound
+}
+
+function buildSeed() {
   const today = todayIso()
 
   // ── Trip 1: Jaipur (upcoming, rich data) ───────────────────────────

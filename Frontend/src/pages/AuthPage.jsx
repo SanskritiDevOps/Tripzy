@@ -1,36 +1,54 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowRight, Lock, Mail, User, Compass, Plane, Wallet } from 'lucide-react'
+import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom'
+import { AlertCircle, ArrowRight, Lock, Mail, User, Compass, Plane, Wallet } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { Field, Input } from '../components/ui/Field'
 import { Card } from '../components/ui/Card'
-import { useTripzyStore } from '../store/useTripzyStore'
+import { useAuthStore } from '../store/useAuthStore'
 import { toast } from '../store/useToastStore'
+import { ApiError } from '../api/client'
+import { loginPath, safeRedirect } from '../utils/urls'
+
+// Mirrors the API rules (Backend/src/modules/auth/auth.schemas.js) for instant feedback.
+const email = z.string().trim().min(1, 'Email is required').pipe(z.email('Enter a valid email address'))
 
 const loginSchema = z.object({
-  email: z.email('Enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  email,
+  password: z.string().min(1, 'Password is required'),
 })
 
-const signupSchema = loginSchema.extend({
-  name: z.string().trim().min(2, 'Tell us your name'),
+const signupSchema = z.object({
+  name: z.string().trim().min(2, 'Name must be at least 2 characters').max(80, 'Name is too long'),
+  email,
+  password: z
+    .string()
+    .min(8, 'Password must be at least 8 characters')
+    .refine((v) => new TextEncoder().encode(v).length <= 72, 'Password must be at most 72 bytes')
+    .refine((v) => /[A-Za-z]/.test(v) && /\d/.test(v), 'Use at least one letter and one number'),
 })
+
+// Created by `npm run db:seed` in Backend/ — only offered in development.
+const DEMO_ACCOUNT = { email: 'demo@tripzy.app', password: 'tripzy-demo-123' }
 
 export function AuthPage({ mode }) {
   const isSignup = mode === 'signup'
   const navigate = useNavigate()
-  const location = useLocation()
-  const login = useTripzyStore((s) => s.login)
-  const signup = useTripzyStore((s) => s.signup)
-  const redirectTo = location.state?.from ?? '/trips'
+  const [params] = useSearchParams()
+  const status = useAuthStore((s) => s.status)
+  const bootError = useAuthStore((s) => s.bootError)
+  const login = useAuthStore((s) => s.login)
+  const registerAccount = useAuthStore((s) => s.register)
+  const redirectParam = params.get('redirect')
+  const redirectTo = safeRedirect(redirectParam)
 
   const {
     register,
     handleSubmit,
     setError,
     setValue,
+    clearErrors,
     formState: { errors, isSubmitting },
   } = useForm({
     resolver: zodResolver(isSignup ? signupSchema : loginSchema),
@@ -38,21 +56,30 @@ export function AuthPage({ mode }) {
   })
 
   const onSubmit = handleSubmit(async (values) => {
-    // Simulated network latency so loading states are visible.
-    await new Promise((r) => setTimeout(r, 450))
-    const result = isSignup ? signup(values) : login(values)
-    if (result.error) {
-      setError('email', { message: result.error })
-      return
+    clearErrors('root')
+    try {
+      const user = isSignup ? await registerAccount(values) : await login({ email: values.email, password: values.password })
+      const firstName = user.name.split(' ')[0]
+      toast.success(isSignup ? `Welcome to Tripzy, ${firstName}!` : `Welcome back, ${firstName}!`)
+      navigate(redirectTo, { replace: true })
+    } catch (error) {
+      if (!(error instanceof ApiError)) throw error
+      // Field-level messages from the API (validation, "Email already in use").
+      const fieldErrors = Object.entries(error.details ?? {}).filter(([field]) => ['name', 'email', 'password'].includes(field))
+      fieldErrors.forEach(([field, message]) => setError(field, { message }, { shouldFocus: true }))
+      if (fieldErrors.length === 0 || error.status !== 400) setError('root', { message: error.message })
+      if (error.isNetworkError || error.status === 429 || error.status >= 500) toast.error(error.message)
     }
-    toast.success(isSignup ? `Welcome to Tripzy, ${result.user.name.split(' ')[0]}!` : `Welcome back, ${result.user.name.split(' ')[0]}!`)
-    navigate(redirectTo, { replace: true })
   })
 
+  if (status === 'authenticated') return <Navigate to={redirectTo} replace />
+
   function fillDemo() {
-    setValue('email', 'demo@tripzy.app')
-    setValue('password', 'demo1234')
+    setValue('email', DEMO_ACCOUNT.email, { shouldValidate: true })
+    setValue('password', DEMO_ACCOUNT.password, { shouldValidate: true })
   }
+
+  const otherPage = loginPath(redirectParam, isSignup ? '/login' : '/signup')
 
   return (
     <div className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-6xl items-center gap-10 px-4 py-10 sm:px-6 lg:grid-cols-2 lg:px-8">
@@ -83,10 +110,23 @@ export function AuthPage({ mode }) {
         <h2 className="font-display text-2xl font-semibold">{isSignup ? 'Create your account' : 'Log in to Tripzy'}</h2>
         <p className="mt-1 text-sm text-slate-500">
           {isSignup ? 'Already have an account? ' : 'New here? '}
-          <Link to={isSignup ? '/login' : '/signup'} state={location.state} className="font-semibold text-ocean-700 hover:underline">
+          <Link to={otherPage} className="font-semibold text-ocean-700 hover:underline">
             {isSignup ? 'Log in' : 'Create an account'}
           </Link>
         </p>
+
+        {redirectParam && !errors.root && (
+          <p className="mt-4 rounded-xl bg-sand-100 px-3.5 py-2.5 text-sm text-slate-700">
+            {isSignup ? 'Create an account' : 'Log in'} to start planning — we’ll take you right back.
+          </p>
+        )}
+
+        {(errors.root || bootError) && (
+          <div role="alert" className="mt-4 flex items-start gap-2 rounded-xl bg-red-50 px-3.5 py-2.5 text-sm font-medium text-red-700 ring-1 ring-red-200">
+            <AlertCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
+            {errors.root?.message ?? bootError}
+          </div>
+        )}
 
         <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
           {isSignup && (
@@ -99,14 +139,14 @@ export function AuthPage({ mode }) {
               <Input id={id} type="email" icon={Mail} autoComplete="email" placeholder="you@example.com" invalid={invalid} {...register('email')} />
             )}
           </Field>
-          <Field label="Password" error={errors.password?.message}>
+          <Field label="Password" error={errors.password?.message} hint={isSignup ? '8+ characters with a letter and a number' : undefined}>
             {({ id, invalid }) => (
               <Input
                 id={id}
                 type="password"
                 icon={Lock}
                 autoComplete={isSignup ? 'new-password' : 'current-password'}
-                placeholder="At least 6 characters"
+                placeholder={isSignup ? 'At least 8 characters' : 'Your password'}
                 invalid={invalid}
                 {...register('password')}
               />
@@ -117,10 +157,12 @@ export function AuthPage({ mode }) {
           </Button>
         </form>
 
-        {!isSignup && (
+        {!isSignup && import.meta.env.DEV && (
           <div className="mt-5 rounded-2xl bg-ocean-50 p-4 text-sm text-ocean-900 ring-1 ring-ocean-100">
             <p className="font-semibold">Exploring the demo?</p>
-            <p className="mt-0.5 text-ocean-800">Log in as the demo traveller to see trips with places, votes and expenses.</p>
+            <p className="mt-0.5 text-ocean-800">
+              Use the seeded demo account (run <code className="rounded bg-white px-1">npm run db:seed</code> in Backend first).
+            </p>
             <Button size="sm" variant="secondary" className="mt-3" onClick={fillDemo}>
               Use demo account
             </Button>

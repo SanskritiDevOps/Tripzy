@@ -39,6 +39,9 @@ import {
 import { useTripzyStore } from '../store/useTripzyStore'
 import { toast } from '../store/useToastStore'
 import { DESTINATIONS } from '../data/destinations'
+import { tripsApi } from '../api/endpoints'
+import { useRemoteTripsSync } from '../features/trips/useRemoteTripsSync'
+import { FullPageLoader } from '../components/layout/AppShell'
 import { formatDateRange } from '../utils/dates'
 
 const TABS = [
@@ -62,12 +65,15 @@ export function TripWorkspacePage() {
   const currentUserId = useTripzyStore((s) => s.currentUserId)
   const deleteTrip = useTripzyStore((s) => s.deleteTrip)
   const removeMember = useTripzyStore((s) => s.removeMember)
+  const { syncing } = useRemoteTripsSync()
 
   const [dialog, setDialog] = useState(null) // 'invite' | 'settings' | 'activity' | 'delete' | 'leave'
   const close = () => setDialog(null)
 
   const placesById = useMemo(() => Object.fromEntries(places.map((p) => [p.id, p])), [places])
   const spentMinor = useMemo(() => expenses.reduce((sum, e) => sum + e.amountMinor, 0), [expenses])
+
+  if (!trip && syncing) return <FullPageLoader label="Loading trip" />
 
   if (!trip) {
     return (
@@ -91,6 +97,18 @@ export function TripWorkspacePage() {
   }
 
   const isOwner = membership.role === 'OWNER'
+
+  /** Runs the API call for server-stored trips (demo trips are local only). Returns false on failure. */
+  async function syncWithServer(call) {
+    if (!trip.remote) return true
+    try {
+      await call()
+      return true
+    } catch (error) {
+      if (error.status !== 401) toast.error(error.message)
+      return false
+    }
+  }
   const destination = DESTINATIONS.find((d) => d.id === trip.destinationId)
   const context = { trip, members, places, placesById, itinerary, expenses, isOwner, currentUserId, usersById }
 
@@ -211,7 +229,8 @@ export function TripWorkspacePage() {
         title="Delete this trip?"
         description={`“${trip.name}” and all its places, votes, itinerary and expenses will be deleted for everyone. This can’t be undone.`}
         confirmLabel="Delete trip"
-        onConfirm={() => {
+        onConfirm={async () => {
+          if (!(await syncWithServer(() => tripsApi.remove(trip.id)))) return
           navigate('/trips', { replace: true })
           deleteTrip(trip.id)
           toast.success('Trip deleted.')
@@ -223,7 +242,8 @@ export function TripWorkspacePage() {
         title="Leave this trip?"
         description="You’ll need a new invite link to rejoin."
         confirmLabel="Leave trip"
-        onConfirm={() => {
+        onConfirm={async () => {
+          if (!(await syncWithServer(() => tripsApi.removeMember(trip.id, currentUserId)))) return
           navigate('/trips', { replace: true })
           removeMember(trip.id, currentUserId)
           toast.info(`You left ${trip.name}.`)

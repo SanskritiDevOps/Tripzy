@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Luggage, Plus, PlaneTakeoff, History, Globe2 } from 'lucide-react'
+import { CloudOff, Luggage, Plus, PlaneTakeoff, History, Globe2 } from 'lucide-react'
 import { Button } from '../components/ui/Button'
 import { EmptyState } from '../components/ui/States'
 import { SegmentedControl } from '../components/ui/Card'
@@ -9,6 +9,7 @@ import { TripFormModal } from '../features/trips/TripFormModal'
 import { useCurrentUser, useMyTrips, useUsersById } from '../store/selectors'
 import { useTripzyStore } from '../store/useTripzyStore'
 import { tripStatus } from '../utils/dates'
+import { useRemoteTripsSync } from '../features/trips/useRemoteTripsSync'
 
 export function TripsPage() {
   const user = useCurrentUser()
@@ -19,6 +20,7 @@ export function TripsPage() {
   const expenses = useTripzyStore((s) => s.expenses)
   const [params, setParams] = useSearchParams()
   const [filter, setFilter] = useState('upcoming')
+  const { error: syncError } = useRemoteTripsSync()
 
   const creating = params.get('new') === '1'
   const prefill = {
@@ -61,6 +63,12 @@ export function TripsPage() {
           Plan a new trip
         </Button>
       </div>
+
+      {syncError && (
+        <p role="status" className="mt-4 flex items-center gap-2 rounded-xl bg-amber-50 px-3.5 py-2.5 text-sm text-amber-800 ring-1 ring-amber-200">
+          <CloudOff className="size-4 shrink-0" aria-hidden /> Couldn’t load trips from the server: {syncError}
+        </p>
+      )}
 
       <div className="mt-6 overflow-x-auto scrollbar-none">
         <SegmentedControl

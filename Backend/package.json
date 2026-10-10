@@ -1,12 +1,19 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "Tripzy REST API (Express + Prisma + Socket.IO)",
+  "main": "src/server.js",
   "scripts": {
-    "dev": "node --watch src/server.js",
-    "start": "node src/server.js",
-    "test": "vitest run"
+    "dev": "node --experimental-strip-types --disable-warning=ExperimentalWarning --watch src/server.js",
+    "start": "node --experimental-strip-types --disable-warning=ExperimentalWarning src/server.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:generate": "prisma generate",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio",
+    "postinstall": "prisma generate"
   },
   "keywords": [],
   "author": "",
@@ -37,5 +44,8 @@
     "prisma": "^7.10.0",
     "supertest": "^7.3.1",
     "vitest": "^5.0.3"
+  },
+  "engines": {
+    "node": ">=22.6"
   }
 }

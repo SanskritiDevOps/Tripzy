@@ -4,7 +4,8 @@
 
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { createSeedData, DEMO_USER_ID } from '../data/mockData'
+import { createSeedData } from '../data/mockData'
+import { findDestination } from '../data/destinations'
 import { addDays, timeToMinutes, todayIso, tripLength } from '../utils/dates'
 import { autoPlan, retimeItems } from '../utils/planner'
 
@@ -62,37 +63,102 @@ export const useTripzyStore = create(
 
       return {
         ...createSeedData(),
-        currentUserId: DEMO_USER_ID,
+        // Set from the authenticated API session (see useAuthStore).
+        currentUserId: null,
+        sessionUserId: null,
 
-        // ── Auth (POST /auth/login, /auth/register, /auth/logout) ──────
-        login: ({ email }) => {
-          const user = get().users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase())
-          if (!user) return { error: 'No account with that email. Try demo@tripzy.app or sign up.' }
-          set({ currentUserId: user.id })
-          return { user }
-        },
-        signup: ({ name, email }) => {
-          const exists = get().users.some((u) => u.email.toLowerCase() === email.trim().toLowerCase())
-          if (exists) return { error: 'An account with this email already exists. Log in instead.' }
-          const user = {
-            id: newId('user'),
-            name: name.trim(),
-            email: email.trim().toLowerCase(),
-            color: AVATAR_COLORS[get().users.length % AVATAR_COLORS.length],
+        // ── Session identity ───────────────────────────────────────────
+        /**
+         * Binds local trip data to the logged-in account. A different account
+         * than last time gets a fresh copy of the demo data with itself as the
+         * main traveller; the same account keeps its local changes.
+         */
+        attachSessionUser: (user) => {
+          const profile = { id: user.id, name: user.name, email: user.email }
+          if (get().sessionUserId !== user.id) {
+            set({ ...createSeedData(profile), currentUserId: user.id, sessionUserId: user.id })
+            return
           }
-          set((s) => ({ users: [...s.users, user], currentUserId: user.id }))
-          return { user }
+          set((s) => ({
+            currentUserId: user.id,
+            users: s.users.map((u) => (u.id === user.id ? { ...u, name: user.name, email: user.email } : u)),
+          }))
         },
-        logout: () => set({ currentUserId: null }),
-        updateProfile: (patch) =>
-          set((s) => ({ users: s.users.map((u) => (u.id === s.currentUserId ? { ...u, ...patch } : u)) })),
+        detachSessionUser: () => set({ currentUserId: null }),
+
+        /**
+         * Mirrors trips stored on the server (GET /api/trips) into local state:
+         * new ones are added with empty itinerary days, changed ones updated,
+         * and server trips that disappeared (deleted / removed from) dropped.
+         */
+        syncRemoteTrips: (remoteTrips) =>
+          set((s) => {
+            const remoteIds = new Set(remoteTrips.map((t) => t.id))
+            const gone = new Set(s.trips.filter((t) => t.remote && !remoteIds.has(t.id)).map((t) => t.id))
+            const users = [...s.users]
+            for (const m of remoteTrips.flatMap((t) => t.members)) {
+              if (!users.some((u) => u.id === m.id)) {
+                users.push({ id: m.id, name: m.name, email: m.email, color: AVATAR_COLORS[users.length % AVATAR_COLORS.length] })
+              }
+            }
+            let trips = s.trips.filter((t) => !gone.has(t.id))
+            let itineraryDays = s.itineraryDays.filter((d) => !gone.has(d.tripId))
+            let packingItems = s.packingItems.filter((p) => !gone.has(p.tripId))
+            for (const remote of remoteTrips) {
+              const fields = {
+                id: remote.id,
+                name: remote.name,
+                destination: remote.destination,
+                startDate: remote.startDate,
+                endDate: remote.endDate,
+                currency: remote.currency,
+                budgetMinor: remote.budgetMinor,
+                groupType: remote.groupType,
+                ownerId: remote.ownerId,
+                votingDeadline: remote.votingDeadline,
+                createdAt: remote.createdAt,
+                remote: true,
+              }
+              const local = trips.find((t) => t.id === remote.id)
+              if (local) {
+                trips = trips.map((t) => (t.id === remote.id ? { ...t, ...fields } : t))
+                const existing = itineraryDays.filter((d) => d.tripId === remote.id)
+                itineraryDays = [
+                  ...itineraryDays.filter((d) => d.tripId !== remote.id),
+                  ...buildDays(remote.id, remote.startDate, remote.endDate, existing),
+                ]
+              } else {
+                trips = [{ ...fields, destinationId: findDestination(remote.destination)?.id ?? null, shareToken: newId('share').slice(6, 18) }, ...trips]
+                itineraryDays = [...itineraryDays, ...buildDays(remote.id, remote.startDate, remote.endDate)]
+                packingItems = [
+                  ...packingItems,
+                  ...STARTER_PACKING.map(([category, label]) => ({ id: newId('pk'), tripId: remote.id, category, label, packed: false, ownerId: null })),
+                ]
+              }
+            }
+            const members = [
+              ...s.members.filter((m) => !remoteIds.has(m.tripId) && !gone.has(m.tripId)),
+              ...remoteTrips.flatMap((t) => t.members.map((m) => ({ tripId: t.id, userId: m.id, role: m.role, joinedAt: m.joinedAt }))),
+            ]
+            const dayIds = new Set(itineraryDays.map((d) => d.id))
+            return {
+              users,
+              trips,
+              members,
+              itineraryDays,
+              packingItems,
+              itineraryItems: s.itineraryItems.filter((i) => dayIds.has(i.dayId)),
+            }
+          }),
 
         // ── Trips & members ────────────────────────────────────────────
-        createTrip: ({ name, destination, destinationId = null, startDate, endDate, budgetMinor = 0, groupType = 'friends' }) => {
+        /** Adds a trip locally. Pass `id` and `remote: true` for trips already created via POST /api/trips. */
+        createTrip: ({ id = null, remote = false, name, destination, destinationId = null, startDate, endDate, budgetMinor = 0, groupType = 'friends' }) => {
           const { currentUserId } = get()
-          const tripId = newId('trip')
+          const tripId = id ?? newId('trip')
           const trip = {
             id: tripId,
+            remote,
             name: name.trim(),
             destination: destination.trim(),
             destinationId,
@@ -430,12 +496,22 @@ export const useTripzyStore = create(
           set((s) => ({ packingItems: s.packingItems.map((p) => (p.tripId === tripId ? { ...p, packed: false } : p)) })),
 
         // ── Demo ───────────────────────────────────────────────────────
-        resetDemo: () => set({ ...createSeedData(), currentUserId: DEMO_USER_ID }),
+        resetDemo: () => {
+          const { users, sessionUserId } = get()
+          const me = users.find((u) => u.id === sessionUserId)
+          set({
+            ...createSeedData(me ? { id: me.id, name: me.name, email: me.email } : undefined),
+            currentUserId: sessionUserId,
+            sessionUserId,
+          })
+        },
       }
     },
     {
       name: STORAGE_KEY,
-      version: 1,
+      // v2: identity comes from the API session; older local-only data is discarded.
+      version: 2,
+      migrate: () => ({}),
       storage: createJSONStorage(() => {
         try {
           const probe = '__tripzy_probe__'
