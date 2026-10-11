@@ -75,6 +75,18 @@ export const packingApi = {
   reset: (tripId) => logged(tripId, api.post(`/trips/${tripId}/packing/reset`)),
 }
 
+export const geoApi = {
+  /** OpenStreetMap place search (via the API). Call on an explicit search, never per keystroke. */
+  search: (q, near, options) => {
+    const params = new URLSearchParams({ q })
+    if (near) {
+      params.set('lat', near.lat.toFixed(5))
+      params.set('lng', near.lng.toFixed(5))
+    }
+    return api.get(`/geo/search?${params}`, options)
+  },
+}
+
 export const invitesApi = {
   create: (tripId, email) => logged(tripId, api.post(`/trips/${tripId}/invites`, { email })),
   list: (tripId) => api.get(`/trips/${tripId}/invites`),

@@ -11,7 +11,9 @@ import { formatDate, formatDuration } from '../../utils/dates'
 import { toInputValue, toMinor } from '../../utils/money'
 import { nextSlot } from '../../utils/planner'
 import { toast } from '../../store/useToastStore'
-import { customPlaceDraft, searchNewPlaces } from '../places/placeSearch'
+import { quickSuggestions, tripCenter, useMapSearch } from '../places/placeSearch'
+import { LocationPicker } from '../places/LocationPicker'
+import { MapSearchAction } from '../places/MapSearchAction'
 import { usePlaceActions } from '../places/usePlaceActions'
 import { useTripActions } from '../trips/useTripActions'
 
@@ -40,6 +42,7 @@ function StopForm({ onClose, trip, places, placesById, itinerary, item = null, i
   const [query, setQuery] = useState(initialPlace?.name ?? '')
   const [errors, setErrors] = useState({})
   const [version, setVersion] = useState(item?.version)
+  const mapSearch = useMapSearch(trip, places)
 
   function toForm(source, place, dayId) {
     const dayItems = itinerary.itemsByDay[dayId] ?? []
@@ -73,15 +76,16 @@ function StopForm({ onClose, trip, places, placesById, itinerary, item = null, i
       .filter((p) => !needle || p.name.toLowerCase().includes(needle))
       .slice(0, 6)
       .map((place) => ({ kind: 'existing', place, key: place.id }))
-    const fresh = searchNewPlaces(trip, places, q)
-      .slice(0, 4)
-      .map((place) => ({ kind: 'new', place, key: `new-${place.name}` }))
+    const fresh = [...quickSuggestions(trip, places, q).slice(0, 3), ...mapSearch.resultsFor(q)]
+      .slice(0, 8)
+      .map((place) => ({ kind: 'new', place, key: `new-${place.osmId ?? place.name}` }))
     return [...onBoard, ...fresh]
   }
 
   function validate() {
     const next = {}
     if (!selected) next.place = 'Choose a place from the board or search results'
+    else if (selected.kind === 'custom' && selected.place.lat == null) next.place = 'Drop a pin on the map so everyone sees where it is'
     if (!form.startTime) next.startTime = 'Pick a start time'
     const duration = Number(form.duration)
     if (!Number.isInteger(duration) || duration < 5 || duration > 720) next.duration = 'Between 5 minutes and 12 hours'
@@ -186,7 +190,8 @@ function StopForm({ onClose, trip, places, placesById, itinerary, item = null, i
             getKey={(o) => o.key}
             getOptions={getOptions}
             onSelect={choosePlace}
-            emptyText="No places match — add it as a custom place below"
+            onSubmitQuery={mapSearch.search}
+            emptyText={query.trim().length >= 2 ? 'Press Enter to search the map' : 'No places on the board yet'}
             renderOption={({ kind, place }) => (
               <div className="flex items-center gap-3">
                 <CategoryIcon category={place.category} size="sm" />
@@ -204,20 +209,31 @@ function StopForm({ onClose, trip, places, placesById, itinerary, item = null, i
                 </span>
               </div>
             )}
-            footer={(q, closeList) =>
-              q.trim().length >= 2 && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    choosePlace({ kind: 'custom', place: customPlaceDraft(q, form.category, trip, places) })
-                    closeList()
-                  }}
-                  className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-ocean-700 hover:bg-ocean-50"
-                >
-                  <Plus className="size-4" /> Add “{q.trim()}” as a custom place
-                </button>
-              )
-            }
+            footer={(q, closeList) => (
+              <MapSearchAction
+                query={q}
+                status={mapSearch.statusFor(q)}
+                error={mapSearch.error}
+                onSearch={mapSearch.search}
+                extra={
+                  q.trim().length >= 2 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        choosePlace({
+                          kind: 'custom',
+                          place: { name: q.trim(), address: '', lat: null, lng: null, category: form.category, durationMinutes: 60 },
+                        })
+                        closeList()
+                      }}
+                      className="flex w-full items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-slate-600 hover:bg-sand-50"
+                    >
+                      <Plus className="size-4" /> Add “{q.trim()}” and drop a pin
+                    </button>
+                  )
+                }
+              />
+            )}
           />
         </Field>
 
@@ -245,6 +261,21 @@ function StopForm({ onClose, trip, places, placesById, itinerary, item = null, i
               </Select>
             )}
           </div>
+        )}
+
+        {selected?.kind === 'custom' && (
+          <Field label={`Where is ${selected.place.name}?`} hint="Click the map to drop a pin; drag it to adjust.">
+            <LocationPicker
+              value={selected.place.lat != null ? { lat: selected.place.lat, lng: selected.place.lng } : null}
+              center={tripCenter(trip, places)}
+              invalid={Boolean(errors.place) && selected.place.lat == null}
+              className="h-52"
+              onChange={(point) => {
+                setSelected((current) => ({ ...current, place: { ...current.place, lat: point.lat, lng: point.lng } }))
+                setErrors((e) => ({ ...e, place: undefined }))
+              }}
+            />
+          </Field>
         )}
 
         <div className="grid gap-4 sm:grid-cols-2">

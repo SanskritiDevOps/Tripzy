@@ -10,7 +10,9 @@ import { PLACE_CATEGORIES, PLACE_CATEGORY_KEYS } from '../../data/categories'
 import { formatDuration } from '../../utils/dates'
 import { usePlaceActions } from './usePlaceActions'
 import { toast } from '../../store/useToastStore'
-import { customPlaceDraft, searchNewPlaces } from './placeSearch'
+import { quickSuggestions, tripCenter, useMapSearch } from './placeSearch'
+import { LocationPicker } from './LocationPicker'
+import { MapSearchAction } from './MapSearchAction'
 
 export function PlaceFormModal({ open, onClose, ...props }) {
   return open ? <PlaceForm onClose={onClose} {...props} /> : null
@@ -34,6 +36,9 @@ function PlaceForm({ onClose, trip, places, place = null, draft = null }) {
   }))
   const [errors, setErrors] = useState({})
   const update = (patch) => setForm((f) => ({ ...f, ...patch }))
+  const mapSearch = useMapSearch(trip, places)
+  const [pinSource, setPinSource] = useState(source?.lat != null ? 'saved' : null) // 'saved' | 'search' | 'pin'
+  const location = form.lat != null && form.lng != null ? { lat: form.lat, lng: form.lng } : null
 
   async function save(event) {
     event?.preventDefault()
@@ -42,15 +47,16 @@ function PlaceForm({ onClose, trip, places, place = null, draft = null }) {
     const duration = Number(form.durationMinutes)
     if (!Number.isInteger(duration) || duration < 5 || duration > 720) next.durationMinutes = 'Between 5 and 720 minutes'
     if (!isEdit && places.some((p) => p.name.toLowerCase() === form.name.trim().toLowerCase())) next.name = 'This place is already on the board'
+    // Real coordinates only: maps, route times and the AI planner depend on them.
+    if (!location) next.location = 'Search the map or click it to drop a pin, so everyone sees the right spot'
     setErrors(next)
     if (Object.keys(next).length) return
 
-    const located = form.lat == null ? customPlaceDraft(form.name, form.category, trip, places) : form
     const payload = {
       name: form.name,
-      address: (form.address || located.address || '').trim(),
-      lat: located.lat,
-      lng: located.lng,
+      address: form.address.trim(),
+      lat: location.lat,
+      lng: location.lng,
       category: form.category,
       durationMinutes: duration,
       notes: form.notes,
@@ -80,7 +86,7 @@ function PlaceForm({ onClose, trip, places, place = null, draft = null }) {
       onClose={onClose}
       icon={isEdit ? PencilLine : MapPinPlus}
       title={isEdit ? 'Edit place' : 'Add a place'}
-      description={isEdit ? undefined : 'Search the map or type your own. Your group can vote on it right away.'}
+      description={isEdit ? undefined : 'Search the map, or name it yourself and drop a pin. Your group can vote on it right away.'}
       footer={
         <>
           <Button variant="secondary" onClick={onClose}>
@@ -94,21 +100,32 @@ function PlaceForm({ onClose, trip, places, place = null, draft = null }) {
     >
       <form onSubmit={save} className="space-y-4" noValidate>
         {!isEdit && (
-          <Field label="Search the map" hint="Results come from the destination’s map data.">
+          <Field label="Search the map" hint="Type a name and press Enter. Search by OpenStreetMap.">
             <Combobox
               aria-label="Search the map"
               value={query}
               onChange={setQuery}
               icon={Search}
               placeholder={`Search in ${trip.destination.split(',')[0]}…`}
-              getKey={(p) => p.name}
-              getOptions={(q) => searchNewPlaces(trip, places, q)}
+              getKey={(p) => p.osmId ?? p.name}
+              getOptions={(q) => [...quickSuggestions(trip, places, q), ...mapSearch.resultsFor(q)].slice(0, 10)}
+              onSubmitQuery={mapSearch.search}
               onSelect={(p) => {
                 setQuery('')
-                setForm((f) => ({ ...f, ...p, durationMinutes: String(p.durationMinutes), notes: f.notes }))
+                setForm((f) => ({ ...f, name: p.name, address: p.address, lat: p.lat, lng: p.lng, category: p.category, durationMinutes: String(p.durationMinutes) }))
+                setPinSource('search')
                 setErrors({})
               }}
-              emptyText="No map results — fill in the details below instead"
+              footer={(q) => (
+                <MapSearchAction
+                  query={q}
+                  status={mapSearch.statusFor(q)}
+                  error={mapSearch.error}
+                  onSearch={mapSearch.search}
+                  emptyHint="Try another spelling, or fill in the name below and drop a pin."
+                />
+              )}
+              emptyText={query.trim().length >= 2 ? 'Press Enter to search the map' : 'Type a place name'}
               renderOption={(p) => (
                 <div className="flex items-center gap-3">
                   <CategoryIcon category={p.category} size="sm" />
@@ -130,6 +147,30 @@ function PlaceForm({ onClose, trip, places, place = null, draft = null }) {
             {({ id }) => <Input id={id} value={form.address} placeholder="Street, area" onChange={(e) => update({ address: e.target.value })} />}
           </Field>
         </div>
+
+        <Field
+          label="Location"
+          error={errors.location}
+          hint={
+            pinSource === 'search'
+              ? 'From OpenStreetMap. Drag the pin if it’s slightly off.'
+              : location
+                ? 'Drag the pin or click elsewhere to move it.'
+                : 'Click the map where the place is.'
+          }
+        >
+          <LocationPicker
+            value={location}
+            center={tripCenter(trip, places)}
+            invalid={Boolean(errors.location)}
+            className="h-56"
+            onChange={(point) => {
+              update({ lat: point.lat, lng: point.lng })
+              setPinSource((s) => (s === 'search' ? 'search' : 'pin'))
+              setErrors((e) => ({ ...e, location: undefined }))
+            }}
+          />
+        </Field>
 
         <fieldset>
           <legend className="text-sm font-medium text-slate-700">Category</legend>

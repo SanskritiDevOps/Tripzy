@@ -133,6 +133,8 @@ export const useTripzyStore = create(
                 id: remote.id,
                 name: remote.name,
                 destination: remote.destination,
+                destinationLat: remote.destinationLat ?? null,
+                destinationLng: remote.destinationLng ?? null,
                 startDate: remote.startDate,
                 endDate: remote.endDate,
                 currency: remote.currency,

@@ -59,12 +59,13 @@ export function TripMap({ points, route, center, selectedId, onSelect, className
   const initialCenter = useMemo(() => {
     if (center) return [center.lat, center.lng]
     if (points[0]) return [points[0].lat, points[0].lng]
-    return [20.5937, 78.9629]
+    return [20, 0] // nothing known yet: world view
   }, [center, points])
+  const initialZoom = points.length || center ? 12 : 2
 
   return (
     <div className={clsx('overflow-hidden rounded-2xl ring-1 ring-sand-200', className)}>
-      <MapContainer center={initialCenter} zoom={points.length ? 12 : 4} scrollWheelZoom className="size-full min-h-64" attributionControl>
+      <MapContainer center={initialCenter} zoom={initialZoom} scrollWheelZoom className="size-full min-h-64" attributionControl>
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

@@ -23,6 +23,14 @@ const schema = z.object({
   // Public URL of the frontend, used in invite links. Defaults to the first CLIENT_URL.
   APP_URL: z.string().url().optional(),
   INVITE_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
+  // Place search + destination geocoding (OpenStreetMap Nominatim). Empty string disables it.
+  GEOCODER_URL: z
+    .string()
+    .trim()
+    .default('https://nominatim.openstreetmap.org')
+    .transform((v) => v.replace(/\/$/, '') || undefined),
+  // Optional contact email sent to Nominatim (recommended by its usage policy).
+  GEOCODER_EMAIL: z.string().trim().optional().transform((v) => v || undefined),
   // Optional: AI itinerary planning with Google Gemini (key from https://aistudio.google.com/apikey).
   // Without a key the planner uses the built-in route-based algorithm.
   GEMINI_API_KEY: z.string().trim().optional().transform((v) => v || undefined),

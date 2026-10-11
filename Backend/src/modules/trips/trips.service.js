@@ -2,6 +2,8 @@ import { prisma } from '../../config/prisma.js'
 import { AppError } from '../../utils/AppError.js'
 import { ACTIONS, logTripActivity } from '../activities/activities.service.js'
 import { syncDays } from '../itinerary/itinerary.service.js'
+import { geocodeDestination } from '../geo/geocoder.js'
+import { logger } from '../../config/logger.js'
 
 const STARTER_PACKING = [
   ['documents', 'ID / passport'],
@@ -30,6 +32,9 @@ export function serializeTrip(trip, currentUserId) {
     id: trip.id,
     name: trip.name,
     destination: trip.destination,
+    // Map centre (OpenStreetMap); null when the destination couldn't be found.
+    destinationLat: trip.destinationLat ?? null,
+    destinationLng: trip.destinationLng ?? null,
     startDate: asIso(trip.startDate),
     endDate: asIso(trip.endDate),
     currency: trip.currency,
@@ -53,11 +58,19 @@ function toData(input) {
 }
 
 /** The authenticated user becomes the team leader and first member in one write. */
+/** Geocoded centre as columns, looked up before the write (never blocks saving: null on failure). */
+async function centreFor(destination) {
+  const centre = await geocodeDestination(destination)
+  return { destinationLat: centre?.lat ?? null, destinationLng: centre?.lng ?? null }
+}
+
 export async function createTrip(userId, input) {
+  const centre = await centreFor(input.destination)
   const trip = await prisma.$transaction(async (tx) => {
     const created = await tx.trip.create({
       data: {
         ...toData(input),
+        ...centre,
         ownerId: userId,
         members: { create: { userId, role: 'LEADER' } },
       },
@@ -79,7 +92,24 @@ export async function listTripsForUser(userId) {
     include: memberInclude,
     orderBy: { startDate: 'asc' },
   })
+  backfillCentres(trips)
   return trips.map((trip) => serializeTrip(trip, userId))
+}
+
+/**
+ * Trips saved before geocoding existed (or while the map service was down) get
+ * their centre in the background; clients pick it up on their next load.
+ */
+const backfilling = new Set()
+function backfillCentres(trips) {
+  for (const trip of trips) {
+    if (trip.destinationLat != null || backfilling.has(trip.id)) continue
+    backfilling.add(trip.id)
+    geocodeDestination(trip.destination)
+      .then((centre) => centre && prisma.trip.updateMany({ where: { id: trip.id, destination: trip.destination }, data: { destinationLat: centre.lat, destinationLng: centre.lng } }))
+      .catch((error) => logger.warn({ err: error, tripId: trip.id }, 'destination backfill failed'))
+      .finally(() => backfilling.delete(trip.id))
+  }
 }
 
 export async function getTrip(tripId, userId) {
@@ -99,8 +129,10 @@ export async function updateTrip(tripId, userId, input) {
       .map(([key, value]) => [key, { from: before[key], to: value }]),
   )
 
+  // A new destination gets a new map centre.
+  const centre = changes.destination ? await centreFor(input.destination) : {}
   const trip = await prisma.$transaction(async (tx) => {
-    const updated = await tx.trip.update({ where: { id: tripId }, data: toData(input), include: memberInclude })
+    const updated = await tx.trip.update({ where: { id: tripId }, data: { ...toData(input), ...centre }, include: memberInclude })
     // Shortening the trip deletes the days past the new end (and their stops).
     if (changes.startDate || changes.endDate) await syncDays(tx, updated)
     if (Object.keys(changes).length) {

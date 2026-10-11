@@ -8,6 +8,7 @@ import { Search, X } from 'lucide-react'
  * - `renderOption(option, { active })` renders a row.
  * - `onSelect(option)` fires on click / Enter.
  * - `footer(query)` optionally renders an extra action row (e.g. "Add custom place").
+ * - `onSubmitQuery(query)` fires on Enter when no option is highlighted (e.g. run a map search).
  */
 export function Combobox({
   value,
@@ -19,6 +20,7 @@ export function Combobox({
   placeholder = 'Search…',
   icon: Icon = Search,
   footer,
+  onSubmitQuery,
   emptyText = 'No matches found',
   className,
   inputClassName,
@@ -56,6 +58,10 @@ export function Combobox({
     } else if (event.key === 'Enter' && open && options[active]) {
       event.preventDefault()
       choose(options[active])
+    } else if (event.key === 'Enter' && onSubmitQuery) {
+      event.preventDefault()
+      setOpen(true)
+      onSubmitQuery(value)
     } else if (event.key === 'Escape') {
       if (open) event.stopPropagation()
       setOpen(false)

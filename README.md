@@ -218,7 +218,7 @@ Features are grouped by priority. Build **P0 first**, then P1, then pick a few f
 
 | API | Purpose | Cost |
 |---|---|---|
-| **Nominatim / Geoapify** | Place search and geocoding | Free tier |
+| **Nominatim** (OpenStreetMap) | Place search and destination geocoding, proxied and cached by the API | Free, no key (1 req/s policy) |
 | **OSRM** (or OpenRouteService) | Distance and travel time between places | Free |
 | **Open-Meteo** | Weather forecast | Free, no key |
 | **Resend / Nodemailer** | Email invites (optional) | Free tier |
@@ -470,7 +470,9 @@ All routes are prefixed with `/api`. Every route except auth and invite preview 
 | DELETE | `/trips/:tripId/places/:placeId/vote` | Remove my vote |
 | POST | `/trips/:tripId/voting/close` | Close voting and lock the winners (leader) |
 | POST | `/trips/:tripId/voting/reopen` | Reopen voting (leader) |
-| GET | `/search/places?q=` | Search places (proxy to geocoding API) |
+| GET | `/geo/search?q=&lat=&lng=` | Search real places (OpenStreetMap Nominatim, via the API). Prefers results near `lat`/`lng` (the trip centre), falls back to worldwide. Logged-in users; 20/min each. Clients call it on explicit search (Enter / button), never per keystroke |
+
+Trips also carry `destinationLat` / `destinationLng`: the destination is geocoded when a trip is created or its destination changes (older trips are backfilled in the background). Places must have real coordinates: from a search result, or a pin the user drops on the map.
 
 ### Itinerary
 | Method | Endpoint | Description |
@@ -764,11 +766,11 @@ GEMINI_API_KEY=                 # optional: AI itinerary planning (see below); e
 GEMINI_MODEL=gemini-3.8-flash   # any Gemini model your key can use
 AI_TIMEOUT_MS=30000             # per AI call
 
-GEOCODING_BASE_URL=https://nominatim.openstreetmap.org
-OSRM_BASE_URL=https://router.project-osrm.org
-
-EMAIL_API_KEY=optional
+GEOCODER_URL=https://nominatim.openstreetmap.org   # place search + trip centres; empty = disabled
+GEOCODER_EMAIL=                 # optional contact email sent to Nominatim (its usage policy asks for one)
 ```
+
+**Place search (no key needed).** Searches go through the API to OpenStreetMap's public Nominatim, following its [usage policy](https://operations.osmfoundation.org/policies/nominatim/): at most 1 request per second from the server (requests are queued), an identifying User-Agent, results cached for 24 h, attribution shown, and no search-as-you-type. That's plenty for a small app. For heavy traffic, run your own Nominatim or use a compatible hosted geocoder and point `GEOCODER_URL` at it.
 
 **Frontend/.env**
 ```
