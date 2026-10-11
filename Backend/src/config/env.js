@@ -23,6 +23,11 @@ const schema = z.object({
   // Public URL of the frontend, used in invite links. Defaults to the first CLIENT_URL.
   APP_URL: z.string().url().optional(),
   INVITE_TTL_DAYS: z.coerce.number().int().min(1).max(30).default(7),
+  // Optional: AI itinerary planning with Google Gemini (key from https://aistudio.google.com/apikey).
+  // Without a key the planner uses the built-in route-based algorithm.
+  GEMINI_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
+  GEMINI_MODEL: z.string().trim().min(1).default('gemini-3.8-flash'),
+  AI_TIMEOUT_MS: z.coerce.number().int().min(5000).max(120000).default(30000),
   COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),

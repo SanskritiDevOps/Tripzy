@@ -1,16 +1,6 @@
 import { useMemo } from 'react'
 import clsx from 'clsx'
-import {
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  TouchSensor,
-  closestCenter,
-  useSensor,
-  useSensors,
-} from '@dnd-kit/core'
-import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { restrictToParentElement, restrictToVerticalAxis } from './dndModifiers'
+import { SortableContext, arrayMove, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { AlertTriangle, ArrowDown, ArrowUp, Car, GripVertical, Lock, LockOpen, NotebookPen, Pencil, Sparkles, Trash2, Wallet } from 'lucide-react'
 import { CategoryIcon } from '../../components/ui/Badge'
@@ -23,54 +13,43 @@ import { findOverlaps } from '../../utils/planner'
 import { PLACE_CATEGORIES } from '../../data/categories'
 
 /**
+ * Sortable list of one day's stops. Must render inside the itinerary's DndContext
+ * (ItineraryTab), which handles reordering and dropping stops onto other days.
+ *
  * canLock            → team leader: may lock/unlock time slots
  * canEditStop(i, p)  → false for members on locked stops or stops of locked places
  */
 export function DayTimeline({ items, placesById, onReorder, onEdit, onDelete, onToggleLock, canLock = true, canEditStop = () => true }) {
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 180, tolerance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  )
   const overlaps = useMemo(() => findOverlaps(items), [items])
   const ids = items.map((i) => i.id)
 
-  function handleDragEnd({ active, over }) {
-    if (!over || active.id === over.id) return
-    const from = ids.indexOf(active.id)
-    const to = ids.indexOf(over.id)
-    onReorder(arrayMove(ids, from, to))
-  }
-
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd} modifiers={[restrictToVerticalAxis, restrictToParentElement]}>
-      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
-        <ol className="relative">
-          {items.map((item, index) => {
-            const next = items[index + 1]
-            const place = placesById[item.placeId]
-            const nextPlace = next && placesById[next.placeId]
-            return (
-              <li key={item.id}>
-                <SortableStop
-                  item={item}
-                  place={place}
-                  overlap={overlaps.has(item.id)}
-                  onEdit={() => onEdit(item)}
-                  onDelete={() => onDelete(item)}
-                  onToggleLock={() => onToggleLock(item)}
-                  canLock={canLock}
-                  editable={canEditStop(item, place)}
-                  onMoveUp={index > 0 ? () => onReorder(arrayMove(ids, index, index - 1)) : null}
-                  onMoveDown={next ? () => onReorder(arrayMove(ids, index, index + 1)) : null}
-                />
-                {next && <TravelGap from={place} to={nextPlace} item={item} next={next} />}
-              </li>
-            )
-          })}
-        </ol>
-      </SortableContext>
-    </DndContext>
+    <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+      <ol className="relative">
+        {items.map((item, index) => {
+          const next = items[index + 1]
+          const place = placesById[item.placeId]
+          const nextPlace = next && placesById[next.placeId]
+          return (
+            <li key={item.id}>
+              <SortableStop
+                item={item}
+                place={place}
+                overlap={overlaps.has(item.id)}
+                onEdit={() => onEdit(item)}
+                onDelete={() => onDelete(item)}
+                onToggleLock={() => onToggleLock(item)}
+                canLock={canLock}
+                editable={canEditStop(item, place)}
+                onMoveUp={index > 0 ? () => onReorder(arrayMove(ids, index, index - 1)) : null}
+                onMoveDown={next ? () => onReorder(arrayMove(ids, index, index + 1)) : null}
+              />
+              {next && <TravelGap from={place} to={nextPlace} item={item} next={next} />}
+            </li>
+          )
+        })}
+      </ol>
+    </SortableContext>
   )
 }
 
@@ -94,6 +73,7 @@ function SortableStop({ item, place, overlap, onEdit, onDelete, onToggleLock, on
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
     disabled: fixed,
+    data: { type: 'stop', item },
   })
   const category = place?.category ?? 'other'
   const endTime = minutesToTime(timeToMinutes(item.startTime) + item.durationMinutes)
@@ -102,7 +82,7 @@ function SortableStop({ item, place, overlap, onEdit, onDelete, onToggleLock, on
     <div
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      className={clsx('relative flex gap-3 sm:gap-4', isDragging && 'z-10')}
+      className={clsx('relative flex gap-3 sm:gap-4', isDragging && 'z-10 opacity-50')}
     >
       <div className="w-14 shrink-0 pt-4 text-right sm:w-[4.25rem]">
         <p className="text-sm font-bold text-slate-900">{formatTime(item.startTime).replace(' ', ' ')}</p>
@@ -124,7 +104,7 @@ function SortableStop({ item, place, overlap, onEdit, onDelete, onToggleLock, on
             {...attributes}
             {...listeners}
             disabled={fixed}
-            aria-label={fixed ? `${place?.name} is locked` : `Drag to reorder ${place?.name}`}
+            aria-label={fixed ? `${place?.name} is locked` : `Drag to reorder ${place?.name} or move it to another day`}
             className={clsx(
               'mt-2 -ml-1 touch-none rounded-md p-0.5 text-slate-300',
               fixed ? 'cursor-not-allowed' : 'cursor-grab hover:text-slate-500 active:cursor-grabbing',

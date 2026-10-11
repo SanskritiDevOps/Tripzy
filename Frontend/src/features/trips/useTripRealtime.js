@@ -37,7 +37,8 @@ function createResyncQueue(tripId) {
       timer = setTimeout(() => {
         const batch = pending
         pending = new Set()
-        chain = chain.then(() => resync(tripId, batch))
+        // Never let one failed re-fetch block the ones after it.
+        chain = chain.then(() => resync(tripId, batch)).catch(ignore)
       }, BATCH_MS)
     },
     cancel() {
@@ -59,6 +60,12 @@ function createResyncQueue(tripId) {
 export function useTripRealtime(trip) {
   const tripId = trip?.remote ? trip.id : null
   const navigate = useNavigate()
+  // navigate's identity changes on every route change (e.g. switching tabs). Keep it in
+  // a ref so the room subscription — and any re-fetch it has queued — survives tab switches.
+  const navigateRef = useRef(navigate)
+  useEffect(() => {
+    navigateRef.current = navigate
+  })
   const status = useRealtimeStatus((s) => s.status)
   const [joinedTripId, setJoinedTripId] = useState(null)
 
@@ -97,7 +104,7 @@ export function useTripRealtime(trip) {
       queue.cancel()
       if (message) toast.info(message)
       deleteTrip(tripId) // local copy only — the server change already happened
-      navigate('/trips', { replace: true })
+      navigateRef.current('/trips', { replace: true })
     }
 
     const onChanged = (event) => event.tripId === tripId && queue.add(event.scopes ?? [])
@@ -131,7 +138,7 @@ export function useTripRealtime(trip) {
       setPresence(tripId, [])
       setJoinedTripId(null)
     }
-  }, [tripId, navigate])
+  }, [tripId])
 
   return { live: Boolean(tripId) && status === 'connected' && joinedTripId === tripId }
 }

@@ -204,18 +204,20 @@ export async function reorderDay({ tripId, userId, role, dayId }, orderedItems) 
 }
 
 /**
- * Saves an auto-planned batch of stops (README §11 code-only path). With
- * `replaceDayId`, that day's unprotected stops are cleared first ("Regenerate
- * day"); locked stops and stops of locked places are always kept.
+ * Saves a generated plan (README §11) — from Gemini or the code-only planner.
+ * With `replaceDayIds` (or the single `replaceDayId`), those days' unprotected
+ * stops are cleared first ("Regenerate"); locked stops and stops of locked
+ * places are always kept. Each new stop gets source AI and the AI's tip as notes.
  */
-export async function applyPlan({ tripId, userId }, { items, replaceDayId }) {
+export async function applyPlan({ tripId, userId }, { items, replaceDayId, replaceDayIds = [], engine = 'code' }) {
+  const replacing = [...new Set([...replaceDayIds, ...(replaceDayId ? [replaceDayId] : [])])]
   return prisma.$transaction(async (tx) => {
-    let replacedDay = null
-    if (replaceDayId) {
-      replacedDay = await findDay(tx, tripId, replaceDayId)
-      await tx.itineraryItem.deleteMany({ where: { dayId: replaceDayId, isLocked: false, place: { isLocked: false } } })
+    const replacedDays = []
+    for (const dayId of replacing) {
+      replacedDays.push(await findDay(tx, tripId, dayId))
+      await tx.itineraryItem.deleteMany({ where: { dayId, isLocked: false, place: { isLocked: false } } })
     }
-    const touched = new Set(replaceDayId ? [replaceDayId] : [])
+    const touched = new Set(replacing)
     for (const draft of items) {
       await findDay(tx, tripId, draft.dayId)
       await findPlace(tx, tripId, draft.placeId)
@@ -227,7 +229,12 @@ export async function applyPlan({ tripId, userId }, { items, replaceDayId }) {
       tripId,
       userId,
       action: ACTIONS.ITINERARY_GENERATED,
-      details: { count: items.length, ...(replacedDay ? { dayNumber: replacedDay.dayNumber } : {}) },
+      details: {
+        count: items.length,
+        engine,
+        ...(replacedDays.length === 1 ? { dayNumber: replacedDays[0].dayNumber } : {}),
+        ...(replacedDays.length > 1 ? { dayCount: replacedDays.length } : {}),
+      },
     })
     return { added: items.length }
   })

@@ -52,6 +52,10 @@ export const itineraryApi = {
   setLock: (tripId, itemId, locked) => logged(tripId, api.patch(`/trips/${tripId}/itinerary/items/${itemId}/lock`, { locked })),
   reorderDay: (tripId, dayId, items) => logged(tripId, api.put(`/trips/${tripId}/itinerary/days/${dayId}/order`, { items })),
   applyPlan: (tripId, body) => logged(tripId, api.post(`/trips/${tripId}/itinerary/plan`, body)),
+  /** { ai: { enabled, provider, model }, defaults } */
+  planner: (tripId) => api.get(`/trips/${tripId}/itinerary/planner`),
+  /** Draft only (Gemini + validation, or the route-based planner) — nothing is saved. */
+  generate: (tripId, body, options) => api.post(`/trips/${tripId}/itinerary/generate`, body, options),
 }
 
 export const expensesApi = {

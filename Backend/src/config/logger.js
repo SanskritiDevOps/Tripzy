@@ -11,6 +11,8 @@ export const logger = pino({
       'res.headers["set-cookie"]',
       '*.password',
       '*.passwordHash',
+      '*.GEMINI_API_KEY',
+      'req.headers["x-goog-api-key"]',
       '*.accessToken',
       '*.refreshToken',
     ],

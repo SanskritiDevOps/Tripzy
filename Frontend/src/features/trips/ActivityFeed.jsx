@@ -116,7 +116,12 @@ function describe(action, d, usersById) {
       return {
         icon: Sparkles,
         tone: 'bg-violet-50 text-violet-700',
-        text: <>auto-planned <b className="font-semibold text-slate-900">{d.count}</b> {d.count === 1 ? 'stop' : 'stops'}{d.dayNumber ? ` for Day ${d.dayNumber}` : ''}</>,
+        text: (
+          <>
+            {d.engine === 'gemini' ? 'planned with AI' : 'auto-planned'} <b className="font-semibold text-slate-900">{d.count}</b> {d.count === 1 ? 'stop' : 'stops'}
+            {d.dayNumber ? ` for Day ${d.dayNumber}` : d.dayCount ? ` across ${d.dayCount} days` : ''}
+          </>
+        ),
       }
     default:
       return { icon: Activity, tone: 'bg-slate-100 text-slate-600', text: <>updated the trip</> }

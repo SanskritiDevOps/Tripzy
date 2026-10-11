@@ -20,7 +20,8 @@ export function broadcastTripChange(...scopes) {
     if (READ_METHODS.has(req.method)) return next()
     const tripId = req.valid?.params?.tripId ?? req.params.tripId
     res.on('finish', () => {
-      if (res.statusCode >= 400) return
+      // Handlers that don't change trip data (e.g. AI drafts) set res.locals.skipBroadcast.
+      if (res.statusCode >= 400 || res.locals.skipBroadcast) return
       emitTripChanged(tripId, {
         scopes,
         actor: { id: req.user.id, name: req.user.name },

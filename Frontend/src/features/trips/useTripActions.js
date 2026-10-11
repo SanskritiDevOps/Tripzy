@@ -69,6 +69,20 @@ export function useTripActions(trip) {
         await mutate(() => itineraryApi.reorderDay(tripId, dayId, items), reloadItinerary)
       },
 
+      /**
+       * Saves a draft from the planner (server trips). New stops get the AI's tip as notes;
+       * with replaceDayIds, those days' unlocked stops are cleared first. Returns the count added.
+       */
+      async savePlan(draft, { replaceDayIds = [] } = {}) {
+        const items = draft.days.flatMap((day) =>
+          day.stops
+            .filter((stop) => !stop.fixed)
+            .map((stop) => ({ dayId: day.dayId, placeId: stop.placeId, startTime: stop.startTime, durationMinutes: stop.durationMinutes, notes: stop.tip ?? '' })),
+        )
+        await mutate(() => itineraryApi.applyPlan(tripId, { replaceDayIds, engine: draft.engine, items }), reloadItinerary)
+        return items.length
+      },
+
       /** Auto-plan (whole trip) or regenerate one day. Returns the number of stops added. */
       async autoPlan(onlyDayId = null) {
         if (!remote) return store().autoPlanTrip(tripId, onlyDayId)

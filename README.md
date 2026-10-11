@@ -129,9 +129,12 @@ Features are grouped by priority. Build **P0 first**, then P1, then pick a few f
 
 #### 4.6 Itinerary (Manual, AI, or Hybrid)
 - **Manual mode:** create days, drag places into days, set start time and duration for each stop
+  - Drag an idea from "Ideas not yet scheduled" onto any day tab (or the open day's timeline); drag a stop onto another day tab to move it; drag within a day to reorder (times re-flow)
 - **AI mode:** provide places, time at each place, and number of days, and the AI generates the plan
+  - "Plan whole trip" / "Plan this day": pick days, places and minutes at each, day start/end, pace and notes ("we love street food") → Gemini plans it → **preview** → save
 - **Hybrid mode:** generate with AI, then edit by hand; lock specific stops and regenerate the rest; regenerate a single day
-- All three modes save to the same data structure
+  - "Regenerate day" re-plans a day's unlocked stops around the locked ones; "Keep them, fill the gaps" plans only around what's there
+- All three modes save to the same data structure (`itinerary_items`; planned stops have `source = 'AI'` and the AI's tip in `notes`)
 
 #### 4.7 Live Collaboration
 - Places, votes, expenses, and itinerary changes appear instantly for everyone in the trip
@@ -478,7 +481,9 @@ All routes are prefixed with `/api`. Every route except auth and invite preview 
 | PATCH | `/trips/:tripId/itinerary/items/:itemId/lock` | Lock / unlock a time slot (leader) |
 | DELETE | `/trips/:tripId/itinerary/items/:itemId` | Remove a stop (members: unlocked only) |
 | PUT | `/trips/:tripId/itinerary/days/:dayId/order` | New order + start times for a day |
-| POST | `/trips/:tripId/itinerary/plan` | Save an auto-plan batch; `replaceDayId` regenerates one day (locked stops kept) |
+| GET | `/trips/:tripId/itinerary/planner` | Whether AI planning is configured (`{ ai: { enabled, provider, model } }`) and planner defaults |
+| POST | `/trips/:tripId/itinerary/generate` | Draft a plan (Gemini + validation, or route-based). Saves nothing. Body: `dayIds`, `mode` (`fill` \| `replace`), `places` `[{ placeId, durationMinutes }]`, `dayStart`, `dayEnd`, `pace`, `notes`, `engine` (`auto` \| `code`). Rate-limited per user |
+| POST | `/trips/:tripId/itinerary/plan` | Save a plan: `items` (with the AI tip as `notes`), `replaceDayIds` clears those days' unlocked stops first (locked stops kept), `engine` for the activity log |
 
 ### Expenses
 | Method | Endpoint | Description |
@@ -611,51 +616,53 @@ LLMs are unreliable at distances, time arithmetic, and strict constraints. So th
 | Step | Done by | Why |
 |---|---|---|
 | Group nearby places into the same day (clustering by distance) | **Code** | Precise and repeatable |
-| Compute travel time between stops | **Code + routing API** | AI would guess |
-| Decide sensible order, meal breaks, and add short tips | **AI** | Needs judgment |
+| Compute travel time between stops | **Code** (haversine estimate today; OSRM later) | AI would guess |
+| Decide sensible order, meal breaks, and add short tips | **AI** (Gemini) | Needs judgment |
 | Check that each day fits in available hours and no place was invented | **Code (validation)** | Never trust raw AI output |
 
-### Inputs
-- Places (voted or selected), each with `duration_minutes`
-- Number of days
+Code: `Backend/src/modules/itinerary/planner/` (`engine.js` = scheduling, clustering, validation; `gemini.js` = API client; `index.js` = the flow). UI: `Frontend/src/features/itinerary/PlannerModal.jsx`.
+
+### Inputs (POST `/itinerary/generate`)
+- Places (the user picks them; upvoted ones are preselected), each with its **time at the place** in minutes
+- Days to plan (any subset of the trip's days)
 - Daily start and end time
-- Pace (relaxed, balanced, packed)
-- Locked stops (fixed day and time)
-- Optional: budget and interests
+- Pace: relaxed (30 min buffer, ~65% of the day for activities), balanced (15 min, 80%), packed (5 min, 100%)
+- Mode: **fill** (existing stops stay; plan around them) or **replace** (unlocked stops are re-planned; locked stops, and stops of locked places, stay fixed)
+- Optional notes: interests, diet, mobility
 
 ### Flow
-1. Gather places and constraints.
-2. Pre-cluster places by location into N days (for example, with k-means or a simple nearest-neighbor grouping).
-3. Compute a travel-time matrix with OSRM.
-4. Send the clusters, durations, and constraints to the LLM and ask for **strict JSON**.
-5. **Validate** the response with Zod:
-   - Every place ID exists in the input
-   - No place appears twice
-   - Each day's total time fits the daily window
-   - Locked stops were not moved
-6. If validation fails, retry once with the error message included. If it fails again, fall back to the code-only plan (clusters ordered by nearest neighbor).
-7. Save to `itinerary_items` with `source = 'AI'` and broadcast `itinerary:generated`.
+1. Gather days, fixed stops and candidate places. Places already scheduled on other days are skipped.
+2. **Code plan:** cluster places into the chosen days by distance (nearest-centroid with a load penalty), order each day by nearest neighbour, then time the stops around the fixed ones with travel time and the pace buffer.
+3. Send Gemini a JSON brief: days (date, weekday, fixed stops), places as short refs (`P1`, `P2`…, so it can't invent IDs) with duration, votes, coordinates and the 4 nearest places with travel minutes, the code plan as "suggestedDays", the settings and notes. The model must answer **strict JSON** (`responseMimeType: application/json` with a response schema).
+4. **Validate and repair** in code:
+   - every `placeRef` exists, no place appears twice, only the chosen days
+   - times are re-flowed: each AI start time is treated as the *earliest* start, so deliberate gaps (lunch at 13:00) are kept, but travel, buffer and fixed stops are always respected
+   - stops that would end after the day's end, or exceed the pace's activity limit, become "unplaced"
+   - the AI may only leave out places that don't fit (it must schedule about as many as the code plan)
+5. If there are errors, retry **once** with the errors as a follow-up turn. If the second answer still has errors but the repaired plan is good enough, use it with a notice; otherwise **fall back to the code plan**. The same fallback is used for timeouts, rate limits, a rejected key, or no key configured.
+6. Return a **draft**. Nothing is saved until the user reviews the preview and clicks Save, which calls `POST /itinerary/plan`. That writes `itinerary_items` with `source = 'AI'` and the tip in `notes`, logs "planned with AI", and broadcasts `trip:changed` (`itinerary`).
 
-### Example output the AI must follow
+### Output the AI must follow
 ```json
 {
   "days": [
-    {
-      "dayNumber": 1,
-      "items": [
-        { "placeId": "uuid-1", "startTime": "09:00", "durationMinutes": 120, "tip": "Go early to avoid crowds" },
-        { "placeId": "uuid-2", "startTime": "12:00", "durationMinutes": 60, "tip": "Lunch break nearby" }
-      ]
-    }
-  ]
+    { "dayNumber": 1, "items": [
+      { "placeRef": "P1", "startTime": "09:00", "tip": "Go at opening to beat the heat" },
+      { "placeRef": "P3", "startTime": "13:00", "tip": "Try the dal baati churma" }
+    ] }
+  ],
+  "unplaced": [{ "placeRef": "P5", "reason": "Too far from the rest of Day 1" }]
 }
 ```
+Durations aren't in the output: each stop lasts exactly the time the user set.
 
 ### Reliability checklist
-- Timeout on the LLM call (for example, 30 seconds)
-- One retry with the validation error
-- A deterministic fallback so the feature never fully fails
-- Manual mode always works even if the AI is down
+- Timeout per AI call (`AI_TIMEOUT_MS`, 30 s) and 55 s overall, including the retry
+- One retry with the validation errors
+- A deterministic fallback, so the feature never fully fails
+- Per-user rate limits (4/min, 40/day). The route-based planner isn't limited
+- The API key stays on the server and is sent as a header, never in the URL
+- Manual mode always works, even when the AI is down
 
 ---
 
@@ -751,8 +758,11 @@ SMTP_URL=                       # optional: e.g. smtps://user:pass@smtp.example.
 MAIL_FROM=Tripzy <no-reply@tripzy.app>
 APP_URL=http://localhost:5173   # used in invite links (defaults to the first CLIENT_URL)
 
-LLM_PROVIDER=gemini
-LLM_API_KEY=your-key
+REDIS_URL=redis://localhost:6379 # optional: shares Socket.IO rooms across API instances
+
+GEMINI_API_KEY=                 # optional: AI itinerary planning (see below); empty = route-based planner
+GEMINI_MODEL=gemini-3.8-flash   # any Gemini model your key can use
+AI_TIMEOUT_MS=30000             # per AI call
 
 GEOCODING_BASE_URL=https://nominatim.openstreetmap.org
 OSRM_BASE_URL=https://router.project-osrm.org
@@ -763,12 +773,15 @@ EMAIL_API_KEY=optional
 **Frontend/.env**
 ```
 VITE_API_URL=/api                          # dev: proxied by Vite to the API; prod: full URL
-VITE_DEV_API_TARGET=http://localhost:5000
+VITE_DEV_API_TARGET=http://localhost:5000   # dev proxy target for /api and /socket.io
+# VITE_SOCKET_URL=https://api.tripzy.app   # only if the socket server isn't the API's origin
 ```
 
 Both folders have a `.env.example` with these keys.
 
 **Enabling Google sign-in (optional).** In Google Cloud Console → APIs & Services → Credentials, create an *OAuth client ID* of type **Web application**. Add your frontend origins (`http://localhost:5173` and `http://localhost` for dev, plus the production URL) under **Authorized JavaScript origins**; no redirect URI is needed. Put the client ID in `Backend/.env` as `GOOGLE_CLIENT_ID` and restart the API. The frontend reads it from `GET /api/auth/providers`, so there's nothing to set on the frontend, and the button stays hidden while the variable is empty.
+
+**Enabling AI itinerary planning (optional).** Create an API key in [Google AI Studio](https://aistudio.google.com/apikey). The Flash models have a free tier with no credit card; on the free tier Google may use prompts to improve its products, and per-minute/per-day quotas apply. Put the key in `Backend/.env` as `GEMINI_API_KEY` (never commit it) and restart the API. The itinerary's planner then shows "Use Gemini AI"; without a key it uses the route-based planner, so planning always works. Tripzy also limits AI planning to 4 requests a minute and 40 a day per user.
 
 ---
 

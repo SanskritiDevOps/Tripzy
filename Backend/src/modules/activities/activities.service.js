@@ -98,7 +98,9 @@ export function summarize(action, details, actorName = 'Someone') {
     case ACTIONS.ITINERARY_REORDERED:
       return `${actorName} reordered Day ${d.dayNumber}`
     case ACTIONS.ITINERARY_GENERATED:
-      return `${actorName} auto-planned ${d.count} ${d.count === 1 ? 'stop' : 'stops'}${d.dayNumber ? ` for Day ${d.dayNumber}` : ''}`
+      return `${actorName} ${d.engine === 'gemini' ? 'planned with AI' : 'auto-planned'} ${d.count} ${d.count === 1 ? 'stop' : 'stops'}${
+        d.dayNumber ? ` for Day ${d.dayNumber}` : d.dayCount ? ` across ${d.dayCount} days` : ''
+      }`
     case ACTIONS.VOTED:
       return `${actorName} ${d.value > 0 ? 'upvoted' : 'downvoted'} ${d.placeName}`
     case ACTIONS.VOTING_CLOSED:
