@@ -262,11 +262,11 @@ Features are grouped by priority. Build **P0 first**, then P1, then pick a few f
 
 ### How a live update flows (example: a vote)
 
-1. User clicks "upvote" and the frontend sends `POST /api/places/:id/vote`.
+1. User clicks "upvote" and the frontend sends `PUT /api/trips/:tripId/places/:placeId/vote` (with its `X-Socket-Id`).
 2. Server checks the JWT and confirms the user is a member of that trip.
-3. Server saves the vote in a transaction (the unique constraint prevents duplicates).
-4. Server emits `vote:updated` to the Socket.IO room `trip:{tripId}`.
-5. Every connected client in that room updates its UI instantly.
+3. Server saves the vote and its activity entry in one transaction (the unique constraint prevents duplicates).
+4. Once the response is sent, the server emits `trip:changed { scopes: ['places', 'itinerary'], actor }` to the room `trip:{tripId}`, skipping the voter's own tab.
+5. Every other connected member re-fetches just those scopes over REST, and their screen updates within a fraction of a second.
 
 **Rule:** REST handles writes and reads; Socket.IO only *broadcasts* the result. This keeps validation and authorization in one place.
 
@@ -513,35 +513,53 @@ Splits are built on the server from `participants` (`EQUAL`, `EXACT` in paise, `
 
 ## 9. Real-Time Events (Socket.IO)
 
+Code: `Backend/src/realtime/` (server), `Backend/src/middleware/broadcast.js` (REST → room), `Frontend/src/realtime/socket.js` and `Frontend/src/features/trips/useTripRealtime.js` (client).
+
 ### Connection and rooms
-- Client connects with its JWT in the handshake.
-- Server verifies the token, then `join`s the client to `trip:{tripId}` **only if the user is a member**.
-- Every broadcast goes to the trip's room, so users never see another trip's data.
+- One connection per tab while signed in, on the API's port at `/socket.io` (the Vite dev server proxies it).
+- The handshake sends the in-memory access JWT (`auth: { token }`). Missing, invalid or expired tokens are rejected (`AUTH_REQUIRED` / `INVALID_TOKEN` / `TOKEN_EXPIRED`); the client then refreshes its session once and reconnects.
+- `trip:join` checks membership in the database, exactly like the REST routes. Non-members get `NOT_A_MEMBER` and are never added to the room, so they never see another trip's updates.
+- Each account also has a private room `user:{userId}` (all its tabs), used to tell it when it loses access.
+- With `REDIS_URL` set, `@socket.io/redis-adapter` shares rooms across API instances. If Redis is unreachable at startup, the server logs a warning and runs single-instance.
+
+### Design: "something changed" signals, data over REST
+Sockets never carry trip data. After a write commits, the server tells the room *which parts* changed, and clients re-fetch those parts through the same authorised REST endpoints. Validation, permissions and serialisation live in one place, and a missed or out-of-order event can't leave a client with wrong data.
 
 ### Server → Client events
 
-| Event | Payload | Triggered when |
+| Event | Payload | Sent when |
 |---|---|---|
-| `place:added` / `place:updated` / `place:deleted` | place object or id | Places change |
-| `vote:updated` | `{ placeId, totals, userVotes }` | Anyone votes |
-| `itinerary:updated` | day or item object | Itinerary changes |
-| `itinerary:generated` | full itinerary | AI generation finishes |
-| `expense:added` / `expense:updated` / `expense:deleted` | expense object | Expenses change |
-| `balances:updated` | balances array | After any expense or settlement |
-| `member:joined` / `member:left` | user object | Membership changes |
-| `presence:update` | list of online users | Someone connects or disconnects |
-| `editing:start` / `editing:end` | `{ itemId, user }` | Someone starts or stops editing an item |
-| `activity:new` | activity entry | Any logged action |
+| `trip:changed` | `{ tripId, scopes, actor: { id, name }, at }` | Any successful write to the trip (not sent to the tab that made it) |
+| `trip:presence` | `{ tripId, onlineUserIds }` | Someone opens or closes the trip, disconnects, or is removed |
+| `trip:deleted` | `{ tripId, actor }` | The leader deletes the trip. Clients leave the workspace with a notice |
+| `trip:access-revoked` | `{ tripId, reason: 'removed' \| 'left', actor }` | You were removed (or left in another tab). The server also drops your sockets from the room |
+
+Scopes per route (`broadcastTripChange` in `trips.routes.js`):
+
+| Write | Scopes the client re-fetches |
+|---|---|
+| Trip details (`PATCH /trips/:id`; changing dates rebuilds days) | `trip`, `itinerary` |
+| Budget; member joined, removed or left | `trip` |
+| Places, votes, place locks | `places`, `itinerary` (deleting a place removes its stops) |
+| Close or reopen voting | `trip`, `places` |
+| Stops, stop locks, reorder, auto-plan | `itinerary` |
+| Expenses and settlements | `expenses` |
+| Packing | `packing` |
+| Invites | `invites` |
+
+Every `trip:changed` also refreshes the activity feed. Bursts of events (a drag-and-drop reorder, quick ticks) are batched into one re-fetch (150 ms), and re-fetches never overlap.
 
 ### Client → Server events
-| Event | Purpose |
-|---|---|
-| `trip:join` | Join a trip room |
-| `trip:leave` | Leave a trip room |
-| `editing:start` / `editing:end` | Announce an edit lock |
+| Event | Payload | Ack |
+|---|---|---|
+| `trip:join` | `{ tripId }` | `{ ok: true, onlineUserIds }` or `{ ok: false, code, message }` |
+| `trip:leave` | `{ tripId }` | none |
 
 ### Reconnection strategy
-On reconnect, the client re-joins the room and **refetches the latest state** through REST (via TanStack Query invalidation). This is simpler and safer than replaying missed events.
+Socket.IO reconnects automatically, and the workspace header shows **Live** or **Reconnecting…**. On reconnect, the client re-joins the room and **re-fetches the whole trip** through REST. This is simpler and safer than replaying missed events. Your own changes keep saving while disconnected, because they're plain REST calls.
+
+### Not built yet
+`editing:start` / `editing:end` ("Priya is editing Day 2"). The optimistic `version` check on stops already prevents silent overwrites (409 `VERSION_CONFLICT`).
 
 ---
 

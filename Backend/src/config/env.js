@@ -10,6 +10,8 @@ const schema = z.object({
     .transform((value) => value.split(',').map((origin) => origin.trim()).filter(Boolean)),
   DATABASE_URL: z.string().url(),
   TEST_DATABASE_URL: z.string().url().optional(),
+  // Optional: shares Socket.IO rooms across API instances. Unreachable Redis falls back to in-memory.
+  REDIS_URL: z.string().trim().optional().transform((v) => v || undefined),
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   ACCESS_TOKEN_TTL: z.string().default('15m'),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(7),

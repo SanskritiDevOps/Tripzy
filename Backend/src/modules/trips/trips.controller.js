@@ -1,4 +1,8 @@
 import * as tripsService from './trips.service.js'
+import { originSocketId } from '../../middleware/broadcast.js'
+import { emitTripChanged, emitTripDeleted, revokeTripAccess } from '../../realtime/io.js'
+
+const actorOf = (req) => ({ id: req.user.id, name: req.user.name })
 
 export async function create(req, res) {
   const trip = await tripsService.createTrip(req.user.id, req.body)
@@ -27,6 +31,7 @@ export async function updateBudget(req, res) {
 export async function remove(req, res) {
   await tripsService.deleteTrip(req.valid.params.tripId)
   req.log.info({ tripId: req.valid.params.tripId, userId: req.user.id }, 'trip deleted')
+  emitTripDeleted(req.valid.params.tripId, actorOf(req))
   res.status(204).end()
 }
 
@@ -36,5 +41,9 @@ export async function removeMember(req, res) {
     targetUserId: req.valid.params.userId,
     actor: req.membership,
   })
+  const { tripId, userId } = req.valid.params
+  const left = userId === req.user.id
+  revokeTripAccess(tripId, userId, { reason: left ? 'left' : 'removed', actor: actorOf(req) })
+  emitTripChanged(tripId, { scopes: ['trip'], actor: actorOf(req), exceptSocketId: originSocketId(req) })
   res.status(204).end()
 }

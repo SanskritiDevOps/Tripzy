@@ -6,6 +6,7 @@ import { create } from 'zustand'
 import { ApiError, configureApi } from '../api/client'
 import { authApi } from '../api/endpoints'
 import { useTripzyStore } from './useTripzyStore'
+import { configureRealtime, realtime } from '../realtime/socket'
 
 let refreshInFlight = null
 
@@ -13,11 +14,13 @@ export const useAuthStore = create((set, get) => {
   function setSession({ user, accessToken }) {
     set({ user, accessToken, status: 'authenticated' })
     useTripzyStore.getState().attachSessionUser(user)
+    realtime.connect()
   }
 
   function clearSession() {
     set({ user: null, accessToken: null, status: 'anonymous' })
     useTripzyStore.getState().detachSessionUser()
+    realtime.disconnect()
   }
 
   async function refreshOnce() {
@@ -99,6 +102,12 @@ export const useAuthStore = create((set, get) => {
 configureApi({
   getAccessToken: () => useAuthStore.getState().accessToken,
   refreshSession: () => useAuthStore.getState().refreshSession(),
+  getSocketId: () => realtime.id,
   // Replaced by AuthBridge once the router is mounted.
   onUnauthorized: () => useAuthStore.getState().clearSession(),
+})
+
+configureRealtime({
+  getAccessToken: () => useAuthStore.getState().accessToken,
+  refreshSession: () => useAuthStore.getState().refreshSession(),
 })

@@ -10,6 +10,7 @@ import { useTripzyStore } from '../../store/useTripzyStore'
 import { toast } from '../../store/useToastStore'
 import { invitesApi, tripsApi } from '../../api/endpoints'
 import { formatDate } from '../../utils/dates'
+import { useTripChanges } from './useTripRealtime'
 import { ROLE_LABELS } from './permissions'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -51,6 +52,8 @@ function EmailInvites({ trip }) {
   }, [trip.id])
 
   useEffect(() => loadPending(), [loadPending])
+  // Someone accepted an invite (or another leader tab sent one): keep the list current.
+  useTripChanges(trip.id, ['trip', 'invites'], loadPending)
 
   async function send(event) {
     event.preventDefault()

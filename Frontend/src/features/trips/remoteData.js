@@ -1,10 +1,16 @@
 // Loads a saved (server) trip's shared data into the local store.
 // Every member reads the same rows, so this is what makes changes visible to all.
 
-import { expensesApi, itineraryApi, packingApi, placesApi } from '../../api/endpoints'
+import { expensesApi, itineraryApi, packingApi, placesApi, tripsApi } from '../../api/endpoints'
 import { useTripzyStore } from '../../store/useTripzyStore'
 
 const store = () => useTripzyStore.getState()
+
+/** Trip details, budget and members for every trip the user belongs to. */
+export async function syncTrips() {
+  const { trips } = await tripsApi.list()
+  store().syncRemoteTrips(trips)
+}
 
 export async function syncPlaces(tripId) {
   const { places } = await placesApi.list(tripId)

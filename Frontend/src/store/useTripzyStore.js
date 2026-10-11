@@ -186,6 +186,9 @@ export const useTripzyStore = create(
         syncRemotePacking: (tripId, items) =>
           set((s) => ({ packingItems: [...s.packingItems.filter((p) => p.tripId !== tripId), ...items] })),
 
+        /** Who has this trip open right now (from the Socket.IO room; demo trips keep their simulated list). */
+        setPresence: (tripId, userIds) => set((s) => ({ presence: { ...s.presence, [tripId]: userIds } })),
+
         // ── Trips & members ────────────────────────────────────────────
         /** Adds a trip locally. Pass `id` and `remote: true` for trips already created via POST /api/trips. */
         createTrip: ({ id = null, remote = false, name, destination, destinationId = null, startDate, endDate, budgetMinor = 0, groupType = 'friends' }) => {

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { requireAuth } from '../../middleware/auth.js'
 import { leaderOnly, requireTripAccess } from '../../middleware/tripAccess.js'
 import { validate } from '../../middleware/validate.js'
+import { broadcastTripChange as broadcast } from '../../middleware/broadcast.js'
 import { budgetSchema, createTripSchema, memberParams, tripParams, updateTripSchema } from './trips.schemas.js'
 import * as controller from './trips.controller.js'
 import { placesRouter, votingRouter } from '../places/places.routes.js'
@@ -25,21 +26,31 @@ tripsRouter.post('/join', validate({ body: tokenSchema }), joinTrip)
 //   any member  → view, edit trip details (name, destination, dates, group type)
 //   leader only → budget, delete trip, invites, removing other members
 tripsRouter.get('/:tripId', validate({ params: tripParams }), requireTripAccess(), controller.get)
-tripsRouter.patch('/:tripId', validate({ params: tripParams, body: updateTripSchema }), requireTripAccess(), controller.update)
+tripsRouter.patch('/:tripId', validate({ params: tripParams, body: updateTripSchema }), requireTripAccess(), broadcast('trip', 'itinerary'), controller.update)
 tripsRouter.patch(
   '/:tripId/budget',
   validate({ params: tripParams, body: budgetSchema }),
   leaderOnly('Only the team leader can set the trip budget.'),
+  broadcast('trip'),
   controller.updateBudget,
 )
 tripsRouter.delete('/:tripId', validate({ params: tripParams }), leaderOnly('Only the team leader can delete the trip.'), controller.remove)
 tripsRouter.delete('/:tripId/members/:userId', validate({ params: memberParams }), requireTripAccess(), controller.removeMember)
 
-tripsRouter.use('/:tripId/places', validate({ params: tripParams }), requireTripAccess(), placesRouter)
+// After each successful write, broadcast() tells the trip's other connected
+// members which data to re-fetch (see src/realtime). Deleting a place also
+// removes its stops, so places changes refresh the itinerary too.
+tripsRouter.use('/:tripId/places', validate({ params: tripParams }), requireTripAccess(), broadcast('places', 'itinerary'), placesRouter)
 tripsRouter.use('/:tripId/activities', validate({ params: tripParams }), requireTripAccess(), activitiesRouter)
-tripsRouter.use('/:tripId/voting', validate({ params: tripParams }), leaderOnly('Only the team leader can open or close voting.'), votingRouter)
-tripsRouter.use('/:tripId/itinerary', validate({ params: tripParams }), requireTripAccess(), itineraryRouter)
-tripsRouter.use('/:tripId/packing', validate({ params: tripParams }), requireTripAccess(), packingRouter)
-// /expenses, /balances, /settlements
-tripsRouter.use('/:tripId', validate({ params: tripParams }), requireTripAccess(), expensesRouter)
-tripsRouter.use('/:tripId/invites', validate({ params: tripParams }), leaderOnly('Only the team leader can manage invitations.'), invitesRouter)
+tripsRouter.use(
+  '/:tripId/voting',
+  validate({ params: tripParams }),
+  leaderOnly('Only the team leader can open or close voting.'),
+  broadcast('trip', 'places'),
+  votingRouter,
+)
+tripsRouter.use('/:tripId/itinerary', validate({ params: tripParams }), requireTripAccess(), broadcast('itinerary'), itineraryRouter)
+tripsRouter.use('/:tripId/packing', validate({ params: tripParams }), requireTripAccess(), broadcast('packing'), packingRouter)
+tripsRouter.use('/:tripId/invites', validate({ params: tripParams }), leaderOnly('Only the team leader can manage invitations.'), broadcast('invites'), invitesRouter)
+// /expenses, /balances, /settlements — mounted last because '/:tripId' matches every sub-path.
+tripsRouter.use('/:tripId', validate({ params: tripParams }), requireTripAccess(), broadcast('expenses'), expensesRouter)

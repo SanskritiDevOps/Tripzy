@@ -1,6 +1,7 @@
 // Thin fetch wrapper for the Tripzy API.
 // - Adds the in-memory access token as `Authorization: Bearer …`
 // - Sends cookies (the httpOnly refresh token lives in one)
+// - Sends this tab's Socket.IO id (X-Socket-Id) so live updates skip the tab that made the change
 // - On a 401 it refreshes the session once and retries; if that fails the
 //   registered handler clears auth state and sends the user to /login.
 
@@ -24,6 +25,7 @@ const hooks = {
   getAccessToken: () => null,
   refreshSession: async () => false,
   onUnauthorized: () => {},
+  getSocketId: () => null,
 }
 
 /** Wired up once by the auth store (avoids an import cycle). */
@@ -35,6 +37,9 @@ async function send(path, { method = 'GET', body, token, signal, headers: extraH
   const headers = { Accept: 'application/json', ...extraHeaders }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (token) headers.Authorization = `Bearer ${token}`
+  // Lets the server skip echoing this tab's own changes back over the socket.
+  const socketId = hooks.getSocketId()
+  if (socketId) headers['X-Socket-Id'] = socketId
 
   let response
   try {

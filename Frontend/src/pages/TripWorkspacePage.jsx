@@ -45,6 +45,8 @@ import { tripsApi } from '../api/endpoints'
 import { useRemoteTripsSync } from '../features/trips/useRemoteTripsSync'
 import { FullPageLoader } from '../components/layout/AppShell'
 import { useRemoteTripData } from '../features/trips/useRemoteTripData'
+import { useTripRealtime } from '../features/trips/useTripRealtime'
+import { LiveIndicator } from '../features/trips/LiveIndicator'
 import { getTripPermissions, ROLE_LABELS } from '../features/trips/permissions'
 import { Badge } from '../components/ui/Badge'
 import { formatDateRange } from '../utils/dates'
@@ -72,6 +74,7 @@ export function TripWorkspacePage() {
   const removeMember = useTripzyStore((s) => s.removeMember)
   const { syncing } = useRemoteTripsSync()
   const { loading: loadingTripData } = useRemoteTripData(trip)
+  const { live } = useTripRealtime(trip)
   const permissions = useMemo(() => getTripPermissions(membership?.role, currentUserId), [membership?.role, currentUserId])
 
   const [dialog, setDialog] = useState(null) // 'invite' | 'settings' | 'activity' | 'delete' | 'leave'
@@ -148,6 +151,7 @@ export function TripWorkspacePage() {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {trip.remote && <LiveIndicator live={live} />}
               <button type="button" onClick={() => setDialog('invite')} className="mr-1 rounded-full" aria-label="Show members">
                 <AvatarStack users={members} size="sm" max={4} showPresence />
               </button>

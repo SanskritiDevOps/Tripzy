@@ -12,6 +12,8 @@ export default defineConfig(({ mode }) => {
       // Same-origin /api in development, so the refresh-token cookie is first-party.
       proxy: {
         '/api': { target: env.VITE_DEV_API_TARGET || 'http://localhost:5000', changeOrigin: true },
+        // Live trip updates (Socket.IO, WebSocket upgrade included).
+        '/socket.io': { target: env.VITE_DEV_API_TARGET || 'http://localhost:5000', changeOrigin: true, ws: true },
       },
     },
   }

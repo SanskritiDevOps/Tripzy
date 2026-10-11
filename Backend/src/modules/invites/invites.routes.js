@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { validate, uuidParam } from '../../middleware/validate.js'
 import { authLimiter } from '../../middleware/rateLimit.js'
 import * as invitesService from './invites.service.js'
+import { originSocketId } from '../../middleware/broadcast.js'
+import { emitTripChanged } from '../../realtime/io.js'
 
 const createInviteSchema = z.object({
   email: z.string({ error: 'Email is required' }).trim().toLowerCase().max(254).pipe(z.email('Enter a valid email address')),
@@ -32,6 +34,8 @@ invitesRouter.delete('/:inviteId', validate({ params: inviteParams }), async (re
 export async function joinTrip(req, res) {
   const trip = await invitesService.acceptInvite(req.user, req.body.token)
   req.log.info({ tripId: trip.id, userId: req.user.id }, 'joined trip via invite')
+  // The member list changed — show the new traveller to everyone already in the trip.
+  emitTripChanged(trip.id, { scopes: ['trip'], actor: { id: req.user.id, name: req.user.name }, exceptSocketId: originSocketId(req) })
   res.json({ trip })
 }
 
