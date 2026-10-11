@@ -44,7 +44,7 @@ import { DESTINATIONS } from '../data/destinations'
 import { tripsApi } from '../api/endpoints'
 import { useRemoteTripsSync } from '../features/trips/useRemoteTripsSync'
 import { FullPageLoader } from '../components/layout/AppShell'
-import { useRemotePlacesSync } from '../features/places/useRemotePlacesSync'
+import { useRemoteTripData } from '../features/trips/useRemoteTripData'
 import { getTripPermissions, ROLE_LABELS } from '../features/trips/permissions'
 import { Badge } from '../components/ui/Badge'
 import { formatDateRange } from '../utils/dates'
@@ -71,8 +71,8 @@ export function TripWorkspacePage() {
   const deleteTrip = useTripzyStore((s) => s.deleteTrip)
   const removeMember = useTripzyStore((s) => s.removeMember)
   const { syncing } = useRemoteTripsSync()
-  useRemotePlacesSync(trip)
-  const permissions = useMemo(() => getTripPermissions(membership?.role), [membership?.role])
+  const { loading: loadingTripData } = useRemoteTripData(trip)
+  const permissions = useMemo(() => getTripPermissions(membership?.role, currentUserId), [membership?.role, currentUserId])
 
   const [dialog, setDialog] = useState(null) // 'invite' | 'settings' | 'activity' | 'delete' | 'leave'
   const close = () => setDialog(null)
@@ -195,9 +195,14 @@ export function TripWorkspacePage() {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6 lg:px-8">
-        <Suspense fallback={<PanelSkeleton />}>
-          <Outlet context={context} />
-        </Suspense>
+        {/* Saved trips: wait for the shared data so nobody briefly sees an empty plan. */}
+        {loadingTripData ? (
+          <PanelSkeleton />
+        ) : (
+          <Suspense fallback={<PanelSkeleton />}>
+            <Outlet context={context} />
+          </Suspense>
+        )}
       </div>
 
       {/* Mobile bottom navigation */}
@@ -231,7 +236,7 @@ export function TripWorkspacePage() {
       <InviteModal open={dialog === 'invite'} onClose={close} trip={trip} members={members} permissions={permissions} currentUserId={currentUserId} />
       <TripFormModal open={dialog === 'settings'} onClose={close} trip={trip} permissions={permissions} />
       <Modal open={dialog === 'activity'} onClose={close} title="Activity" description="What your group has been up to." icon={Activity}>
-        <ActivityFeed entries={activity} usersById={usersById} />
+        <ActivityFeed trip={trip} localEntries={activity} usersById={usersById} currentUserId={currentUserId} />
       </Modal>
       <ConfirmDialog
         open={dialog === 'delete'}

@@ -12,7 +12,6 @@ import { TripMap } from './TripMap'
 import { StopFormModal } from '../itinerary/StopFormModal'
 import { useTripContext } from '../trips/useTripContext'
 import { useVoteSummary } from '../../store/selectors'
-import { useTripzyStore } from '../../store/useTripzyStore'
 import { toast } from '../../store/useToastStore'
 import { PLACE_CATEGORIES, PLACE_CATEGORY_KEYS } from '../../data/categories'
 import { tripCenter } from './placeSearch'
@@ -30,9 +29,7 @@ function votingState(trip) {
 export default function PlacesTab() {
   const { trip, places, itinerary, permissions, usersById } = useTripContext()
   const { totals, myVotes, ranked } = useVoteSummary(trip.id)
-  const castVote = useTripzyStore((s) => s.castVote)
   const placeActions = usePlaceActions(trip)
-  const reopenVoting = useTripzyStore((s) => s.reopenVoting)
 
   const [category, setCategory] = useState('all')
   const [sort, setSort] = useState('popular')
@@ -87,8 +84,7 @@ export default function PlacesTab() {
   }
 
   function vote(place, value) {
-    const result = castVote(place.id, value)
-    if (result.error) toast.error(result.error)
+    run(() => placeActions.vote(place.id, value))
   }
 
   const mapPanel = (
@@ -141,10 +137,7 @@ export default function PlacesTab() {
               variant="secondary"
               size="sm"
               icon={Vote}
-              onClick={() => {
-                reopenVoting(trip.id)
-                toast.success('Voting reopened.')
-              }}
+              onClick={() => run(() => placeActions.reopenVoting(), 'Voting reopened.')}
             >
               Reopen voting
             </Button>
@@ -283,8 +276,7 @@ export default function PlacesTab() {
         description="Every place with a positive score is locked in as a winner. You can reopen voting later."
         confirmLabel="Close voting"
         onConfirm={() => {
-          const winners = ranked.filter((p) => (totals[p.id]?.score ?? 0) > 0 && !p.isLocked).map((p) => p.id)
-          run(() => placeActions.closeVoting(winners), 'Voting closed — winners are locked.')
+          run(() => placeActions.closeVoting(), 'Voting closed — winners are locked.')
         }}
       />
     </div>

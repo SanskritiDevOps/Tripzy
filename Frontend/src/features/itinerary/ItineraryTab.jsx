@@ -16,6 +16,8 @@ import { useTripzyStore } from '../../store/useTripzyStore'
 import { toast } from '../../store/useToastStore'
 import { addDays, formatDate, formatDuration, timeToMinutes, todayIso, weekday } from '../../utils/dates'
 import { tripsApi } from '../../api/endpoints'
+import { useTripActions } from '../trips/useTripActions'
+import { syncItinerary } from '../trips/remoteData'
 import { formatMoney } from '../../utils/money'
 import { nextSlot } from '../../utils/planner'
 import { PLACE_CATEGORIES } from '../../data/categories'
@@ -23,12 +25,19 @@ import { PLACE_CATEGORIES } from '../../data/categories'
 export default function ItineraryTab() {
   const { trip, places, placesById, itinerary, permissions } = useTripContext()
   const { totals, ranked } = useVoteSummary(trip.id)
-  const reorderDay = useTripzyStore((s) => s.reorderDay)
-  const deleteItineraryItem = useTripzyStore((s) => s.deleteItineraryItem)
-  const toggleItemLock = useTripzyStore((s) => s.toggleItemLock)
-  const addItineraryItem = useTripzyStore((s) => s.addItineraryItem)
-  const autoPlanTrip = useTripzyStore((s) => s.autoPlanTrip)
+  const { itinerary: actions } = useTripActions(trip)
   const addDay = useTripzyStore((s) => s.addDay)
+
+  /** Runs an itinerary action; API errors (e.g. a locked stop) become a toast. */
+  async function run(action, success) {
+    try {
+      const result = await action()
+      if (success) toast.success(typeof success === 'function' ? success(result) : success)
+      return result
+    } catch (error) {
+      if (error.status !== 401) toast.error(error.message)
+    }
+  }
 
   const [params, setParams] = useSearchParams()
   const [stopModal, setStopModal] = useState(null) // { item?, initial? }
@@ -60,9 +69,10 @@ export default function ItineraryTab() {
 
   async function runAutoPlan(dayId = null) {
     setPlanning(true)
-    await new Promise((r) => setTimeout(r, 700)) // visible "thinking" state
-    const added = autoPlanTrip(trip.id, dayId)
+    await new Promise((r) => setTimeout(r, 500)) // visible "thinking" state
+    const added = await run(() => actions.autoPlan(dayId))
     setPlanning(false)
+    if (added === undefined) return
     if (added === 0) toast.info(dayId ? 'No unscheduled places fit this day.' : 'Every voted place is already scheduled — add more places to plan.')
     else toast.success(`Auto-plan added ${added} ${added === 1 ? 'stop' : 'stops'}, grouped by distance.`)
   }
@@ -73,8 +83,10 @@ export default function ItineraryTab() {
       toast.error(`Day ${selectedDay.dayNumber} is full — pick another day.`)
       return
     }
-    addItineraryItem(selectedDay.id, { placeId: place.id, startTime, durationMinutes: place.durationMinutes })
-    toast.success(`${place.name} added to Day ${selectedDay.dayNumber} at ${startTime}.`)
+    run(
+      () => actions.addItem(selectedDay.id, { placeId: place.id, startTime, durationMinutes: place.durationMinutes }),
+      `${place.name} added to Day ${selectedDay.dayNumber} at ${startTime}.`,
+    )
   }
 
   const mapPoints = items
@@ -140,6 +152,7 @@ export default function ItineraryTab() {
                   // Server trips: dates live in the API (any member may change them).
                   if (trip.remote) await tripsApi.update(trip.id, { startDate: trip.startDate, endDate: addDays(trip.endDate, 1) })
                   addDay(trip.id)
+                  if (trip.remote) await syncItinerary(trip.id)
                   toast.success('Added a day to the end of the trip.')
                 } catch (error) {
                   if (error.status !== 401) toast.error(error.details?.endDate ?? error.message)
@@ -216,13 +229,12 @@ export default function ItineraryTab() {
             <DayTimeline
               items={items}
               placesById={placesById}
-              onReorder={(ids) => reorderDay(selectedDay.id, ids)}
+              onReorder={(ids) => run(() => actions.reorderDay(selectedDay.id, ids))}
               onEdit={(item) => setStopModal({ item })}
-              onDelete={(item) => {
-                deleteItineraryItem(item.id)
-                toast.info(`${placesById[item.placeId]?.name ?? 'Stop'} removed from Day ${selectedDay.dayNumber}.`)
-              }}
-              onToggleLock={(item) => toggleItemLock(item.id)}
+              onDelete={(item) =>
+                run(() => actions.deleteItem(item.id), `${placesById[item.placeId]?.name ?? 'Stop'} removed from Day ${selectedDay.dayNumber}.`)
+              }
+              onToggleLock={(item) => run(() => actions.toggleLock(item))}
               canLock={permissions.isLeader}
               canEditStop={permissions.canEditStop}
             />

@@ -4,6 +4,7 @@ import { env } from '../../config/env.js'
 import { sendMail } from '../../config/mailer.js'
 import { AppError } from '../../utils/AppError.js'
 import { serializeTrip } from '../trips/trips.service.js'
+import { ACTIONS, logTripActivity } from '../activities/activities.service.js'
 
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex')
 
@@ -61,7 +62,7 @@ export async function createInvite({ tripId, inviterId, email }) {
   const token = crypto.randomBytes(32).toString('base64url')
   const invite = await prisma.$transaction(async (tx) => {
     await tx.tripInvite.updateMany({ where: { tripId, email, status: 'PENDING' }, data: { status: 'REVOKED' } })
-    return tx.tripInvite.create({
+    const created = await tx.tripInvite.create({
       data: {
         tripId,
         email,
@@ -70,6 +71,8 @@ export async function createInvite({ tripId, inviterId, email }) {
         expiresAt: new Date(Date.now() + env.INVITE_TTL_DAYS * 24 * 60 * 60 * 1000),
       },
     })
+    await logTripActivity(tx, { tripId, userId: inviterId, action: ACTIONS.INVITE_SENT, details: { email } })
+    return created
   })
 
   const inviteUrl = `${env.appUrl}/join-trip?token=${token}`
@@ -138,7 +141,10 @@ export async function acceptInvite(user, token) {
       data: { status: 'ACCEPTED', acceptedById: user.id, acceptedAt: new Date() },
     })
     if (count === 0) throw new AppError(410, 'This invite has already been used.', { code: 'INVITE_USED' })
-    if (!existing) await tx.tripMember.create({ data: { tripId: invite.tripId, userId: user.id, role: 'MEMBER' } })
+    if (!existing) {
+      await tx.tripMember.create({ data: { tripId: invite.tripId, userId: user.id, role: 'MEMBER' } })
+      await logTripActivity(tx, { tripId: invite.tripId, userId: user.id, action: ACTIONS.MEMBER_JOINED, details: {} })
+    }
   })
   return loadTrip(invite.tripId, user.id)
 }

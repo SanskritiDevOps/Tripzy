@@ -1,5 +1,18 @@
 import { prisma } from '../../config/prisma.js'
 import { AppError } from '../../utils/AppError.js'
+import { ACTIONS, logTripActivity } from '../activities/activities.service.js'
+import { syncDays } from '../itinerary/itinerary.service.js'
+
+const STARTER_PACKING = [
+  ['documents', 'ID / passport'],
+  ['documents', 'Tickets & bookings'],
+  ['clothing', 'Comfortable shoes'],
+  ['toiletries', 'Toiletries kit'],
+  ['electronics', 'Phone charger'],
+  ['electronics', 'Power bank'],
+  ['health', 'Basic medicines'],
+  ['gear', 'Reusable water bottle'],
+]
 
 const asDate = (iso) => new Date(`${iso}T00:00:00Z`)
 const asIso = (date) => date.toISOString().slice(0, 10)
@@ -41,13 +54,21 @@ function toData(input) {
 
 /** The authenticated user becomes the team leader and first member in one write. */
 export async function createTrip(userId, input) {
-  const trip = await prisma.trip.create({
-    data: {
-      ...toData(input),
-      ownerId: userId,
-      members: { create: { userId, role: 'LEADER' } },
-    },
-    include: memberInclude,
+  const trip = await prisma.$transaction(async (tx) => {
+    const created = await tx.trip.create({
+      data: {
+        ...toData(input),
+        ownerId: userId,
+        members: { create: { userId, role: 'LEADER' } },
+      },
+      include: memberInclude,
+    })
+    await syncDays(tx, created)
+    await tx.packingItem.createMany({
+      data: STARTER_PACKING.map(([category, label]) => ({ tripId: created.id, category, label, addedById: userId })),
+    })
+    await logTripActivity(tx, { tripId: created.id, userId, action: ACTIONS.TRIP_CREATED, details: { tripName: created.name } })
+    return created
   })
   return serializeTrip(trip, userId)
 }
@@ -70,12 +91,40 @@ export async function getTrip(tripId, userId) {
 export async function updateTrip(tripId, userId, input) {
   const current = await prisma.trip.findUnique({ where: { id: tripId } })
   if (!current) throw AppError.notFound('Trip not found', { code: 'TRIP_NOT_FOUND' })
-  const trip = await prisma.trip.update({ where: { id: tripId }, data: toData(input), include: memberInclude })
+
+  const before = serializeTrip(current, userId)
+  const changes = Object.fromEntries(
+    Object.entries(input)
+      .filter(([key, value]) => value !== undefined && before[key] !== value)
+      .map(([key, value]) => [key, { from: before[key], to: value }]),
+  )
+
+  const trip = await prisma.$transaction(async (tx) => {
+    const updated = await tx.trip.update({ where: { id: tripId }, data: toData(input), include: memberInclude })
+    // Shortening the trip deletes the days past the new end (and their stops).
+    if (changes.startDate || changes.endDate) await syncDays(tx, updated)
+    if (Object.keys(changes).length) {
+      await logTripActivity(tx, { tripId, userId, action: ACTIONS.TRIP_UPDATED, details: { fields: Object.keys(changes), changes } })
+    }
+    return updated
+  })
   return serializeTrip(trip, userId)
 }
 
 export async function updateBudget(tripId, userId, budgetMinor) {
-  const trip = await prisma.trip.update({ where: { id: tripId }, data: { budgetMinor: BigInt(budgetMinor) }, include: memberInclude })
+  const trip = await prisma.$transaction(async (tx) => {
+    const current = await tx.trip.findUnique({ where: { id: tripId } })
+    const updated = await tx.trip.update({ where: { id: tripId }, data: { budgetMinor: BigInt(budgetMinor) }, include: memberInclude })
+    if (Number(current.budgetMinor) !== budgetMinor) {
+      await logTripActivity(tx, {
+        tripId,
+        userId,
+        action: ACTIONS.BUDGET_UPDATED,
+        details: { from: Number(current.budgetMinor), to: budgetMinor, currency: updated.currency },
+      })
+    }
+    return updated
+  })
   return serializeTrip(trip, userId)
 }
 
@@ -93,5 +142,14 @@ export async function removeMember({ tripId, targetUserId, actor }) {
   if (target.role === 'LEADER') {
     throw AppError.badRequest('The team leader can’t leave the trip. Delete it instead.', { code: 'LEADER_CANNOT_LEAVE' })
   }
-  await prisma.tripMember.delete({ where: { tripId_userId: { tripId, userId: targetUserId } } })
+  const targetUser = await prisma.user.findUnique({ where: { id: targetUserId }, select: { name: true } })
+  await prisma.$transaction(async (tx) => {
+    await tx.tripMember.delete({ where: { tripId_userId: { tripId, userId: targetUserId } } })
+    await logTripActivity(tx, {
+      tripId,
+      userId: actor.userId,
+      action: isSelf ? ACTIONS.MEMBER_LEFT : ACTIONS.MEMBER_REMOVED,
+      details: isSelf ? {} : { memberId: targetUserId, memberName: targetUser?.name },
+    })
+  })
 }

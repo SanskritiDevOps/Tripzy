@@ -8,7 +8,8 @@ import { SegmentedControl } from '../../components/ui/Card'
 import { Avatar } from '../../components/ui/Avatar'
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_KEYS, SPLIT_TYPES } from '../../data/categories'
 import { buildSplits, formatMoney, splitEqual, toInputValue, toMinor } from '../../utils/money'
-import { newId, useTripzyStore } from '../../store/useTripzyStore'
+import { newId } from '../../store/useTripzyStore'
+import { useTripActions } from '../trips/useTripActions'
 import { toast } from '../../store/useToastStore'
 
 export function ExpenseFormModal({ open, onClose, ...props }) {
@@ -26,8 +27,7 @@ function initialParticipants(members, expense) {
 }
 
 function ExpenseForm({ onClose, trip, members, currentUserId, expense = null }) {
-  const addExpense = useTripzyStore((s) => s.addExpense)
-  const updateExpense = useTripzyStore((s) => s.updateExpense)
+  const { expenses: actions } = useTripActions(trip)
   const isEdit = Boolean(expense)
 
   // One key per modal session: retries / double-clicks can't create duplicates.
@@ -83,17 +83,32 @@ function ExpenseForm({ onClose, trip, members, currentUserId, expense = null }) 
     if (Object.keys(next).length) return
 
     setSaving(true)
-    await new Promise((r) => setTimeout(r, 300))
-    const payload = { title, amountMinor, paidBy, splitType, category, splits: result.splits }
-    if (isEdit) {
-      updateExpense(expense.id, { ...payload, title: title.trim() })
-      toast.success('Expense updated. Balances recalculated.')
-    } else {
-      addExpense(trip.id, { ...payload, idempotencyKey })
-      toast.success(`${formatMoney(amountMinor)} added. Balances updated for everyone.`)
+    const payload = { title: title.trim(), amountMinor, paidBy, splitType, category, splits: result.splits }
+    // What the API needs to rebuild the splits itself (it never trusts client-side shares).
+    const participants =
+      splitType === 'EQUAL'
+        ? included.map((p) => ({ userId: p.userId }))
+        : splitType === 'EXACT'
+          ? result.splits.map((s) => ({ userId: s.userId, value: s.shareMinor }))
+          : included.map((p) => ({ userId: p.userId, value: Number(p.value || 0) }))
+    try {
+      if (isEdit) {
+        await actions.update(expense.id, payload, participants)
+        toast.success('Expense updated. Balances recalculated.')
+      } else {
+        await actions.add({ ...payload, idempotencyKey }, participants)
+        toast.success(`${formatMoney(amountMinor)} added. Balances updated for everyone.`)
+      }
+      onClose()
+    } catch (error) {
+      setSaving(false)
+      if (error.status === 401) return
+      const field = Object.keys(error.details ?? {})[0]
+      if (field === 'title') setErrors({ title: error.details.title })
+      else if (field === 'amountMinor') setErrors({ amount: error.details.amountMinor })
+      else if (field) setErrors({ splits: error.details[field] })
+      else toast.error(error.message)
     }
-    setSaving(false)
-    onClose()
   }
 
   return (

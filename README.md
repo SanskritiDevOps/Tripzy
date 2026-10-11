@@ -394,15 +394,17 @@ Features are grouped by priority. Build **P0 first**, then P1, then pick a few f
 | amount_minor | bigint | |
 | settled_at | timestamp | |
 
-**activity_log** *(P1)*
+**trip_activities** (activity feed / audit log)
 | Column | Type | Notes |
 |---|---|---|
 | id | UUID (PK) | |
-| trip_id | UUID (FK) | |
-| actor_id | UUID (FK) | |
-| type | text | e.g. `PLACE_ADDED` |
-| payload | jsonb | |
-| created_at | timestamp | |
+| trip_id | UUID (FK) | cascade-deleted with the trip |
+| user_id | UUID (FK) | who did it; set to null if the account is deleted |
+| action | enum | `TRIP_CREATED`, `TRIP_UPDATED`, `BUDGET_UPDATED`, `PLACE_ADDED`, `PLACE_UPDATED`, `PLACE_DELETED`, `PLACE_LOCKED`, `PLACE_UNLOCKED`, `MEMBER_JOINED`, `MEMBER_LEFT`, `MEMBER_REMOVED`, `INVITE_SENT` |
+| details | jsonb | snapshot, e.g. `{ "placeName": "Amber Fort" }` or `{ "from": 12000000, "to": 8000000 }` |
+| created_at | timestamp | indexed with trip_id, newest first |
+
+Each entry is written in the same transaction as the change it describes (via `logTripActivity(tx, …)`), so a failed change is never logged and a logged change always happened.
 
 ### Relationships at a glance
 
@@ -461,37 +463,48 @@ All routes are prefixed with `/api`. Every route except auth and invite preview 
 | PATCH | `/trips/:tripId/places/:placeId` | Edit a place (members: unlocked only) |
 | DELETE | `/trips/:tripId/places/:placeId` | Delete a place (members: unlocked only) |
 | PATCH | `/trips/:tripId/places/:placeId/lock` | Lock or unlock a place (`{ locked }`, leader) |
-| PUT | `/places/:placeId/vote` | Cast or change a vote |
-| DELETE | `/places/:placeId/vote` | Remove my vote |
+| PUT | `/trips/:tripId/places/:placeId/vote` | Cast or change my vote (`{ value: 1 | -1 }`) |
+| DELETE | `/trips/:tripId/places/:placeId/vote` | Remove my vote |
+| POST | `/trips/:tripId/voting/close` | Close voting and lock the winners (leader) |
+| POST | `/trips/:tripId/voting/reopen` | Reopen voting (leader) |
 | GET | `/search/places?q=` | Search places (proxy to geocoding API) |
 
 ### Itinerary
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/trips/:tripId/itinerary` | Full itinerary |
-| POST | `/trips/:tripId/itinerary/days` | Add a day |
-| POST | `/itinerary/days/:dayId/items` | Add a stop to a day |
-| PATCH | `/itinerary/items/:itemId` | Edit time, duration, or lock |
-| PATCH | `/trips/:tripId/itinerary/reorder` | Reorder or move stops |
-| DELETE | `/itinerary/items/:itemId` | Remove a stop |
-| POST | `/trips/:tripId/itinerary/generate` | Generate with AI |
-| POST | `/itinerary/days/:dayId/regenerate` | Regenerate one day |
+| GET | `/trips/:tripId/itinerary` | All days with their stops (days follow the trip dates; add a day by extending `endDate`) |
+| POST | `/trips/:tripId/itinerary/items` | Add a stop |
+| PATCH | `/trips/:tripId/itinerary/items/:itemId` | Edit or move a stop; send `version` → `409` if someone saved first |
+| PATCH | `/trips/:tripId/itinerary/items/:itemId/lock` | Lock / unlock a time slot (leader) |
+| DELETE | `/trips/:tripId/itinerary/items/:itemId` | Remove a stop (members: unlocked only) |
+| PUT | `/trips/:tripId/itinerary/days/:dayId/order` | New order + start times for a day |
+| POST | `/trips/:tripId/itinerary/plan` | Save an auto-plan batch; `replaceDayId` regenerates one day (locked stops kept) |
 
 ### Expenses
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/trips/:tripId/expenses` | List expenses |
 | POST | `/trips/:tripId/expenses` | Add an expense (requires `Idempotency-Key` header) |
-| PATCH | `/expenses/:expenseId` | Edit an expense |
-| DELETE | `/expenses/:expenseId` | Delete an expense |
-| GET | `/trips/:tripId/balances` | Net balance per member |
-| GET | `/trips/:tripId/settlements/suggested` | Simplified payment plan |
-| POST | `/trips/:tripId/settlements` | Record a settled payment |
+| PATCH | `/trips/:tripId/expenses/:expenseId` | Edit an expense (whoever added it, or the leader) |
+| DELETE | `/trips/:tripId/expenses/:expenseId` | Delete an expense (whoever added it, or the leader) |
+| GET | `/trips/:tripId/balances` | Net balance per member + simplified payment plan |
+| POST | `/trips/:tripId/settlements` | Record a payment (payer, receiver, or leader) |
+
+Splits are built on the server from `participants` (`EQUAL`, `EXACT` in paise, `PERCENT`), so shares always add up exactly.
+
+### Packing list
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/trips/:tripId/packing` | Shared checklist (new trips start with a starter list) |
+| POST | `/trips/:tripId/packing` | Add an item, optionally assigned to a member |
+| PATCH | `/trips/:tripId/packing/:itemId` | Tick, rename, recategorise or reassign |
+| DELETE | `/trips/:tripId/packing/:itemId` | Remove (whoever added it, or the leader) |
+| POST | `/trips/:tripId/packing/reset` | Untick everything |
 
 ### Extras (P1)
 | Method | Endpoint | Description |
 |---|---|---|
-| GET | `/trips/:tripId/activity` | Activity feed |
+| GET | `/trips/:tripId/activities?limit=30&before=<id>` | Activity feed, newest first, cursor-paginated (any member) |
 | GET | `/trips/:tripId/weather` | Daily forecast |
 | POST | `/trips/:tripId/itinerary/optimize-route` | Reorder a day for the shortest route |
 | GET | `/public/trips/:shareToken` | Read-only public itinerary |

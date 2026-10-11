@@ -8,7 +8,7 @@ import { Avatar } from '../../components/ui/Avatar'
 import { EmptyState } from '../../components/ui/States'
 import { useTripContext } from '../trips/useTripContext'
 import { useTripPacking } from '../../store/selectors'
-import { useTripzyStore } from '../../store/useTripzyStore'
+import { useTripActions } from '../trips/useTripActions'
 import { toast } from '../../store/useToastStore'
 import { PACKING_CATEGORIES, PACKING_CATEGORY_KEYS } from '../../data/categories'
 
@@ -26,12 +26,18 @@ const SUGGESTIONS = [
 ]
 
 export default function PackingTab() {
-  const { trip, members, usersById } = useTripContext()
+  const { trip, members, usersById, permissions } = useTripContext()
   const items = useTripPacking(trip.id)
-  const addPackingItem = useTripzyStore((s) => s.addPackingItem)
-  const togglePacked = useTripzyStore((s) => s.togglePacked)
-  const deletePackingItem = useTripzyStore((s) => s.deletePackingItem)
-  const resetPacking = useTripzyStore((s) => s.resetPacking)
+  const { packing: actions } = useTripActions(trip)
+
+  async function run(action, success) {
+    try {
+      await action()
+      if (success) toast.success(success)
+    } catch (error) {
+      if (error.status !== 401) toast.error(error.message)
+    }
+  }
 
   const [label, setLabel] = useState('')
   const [category, setCategory] = useState('clothing')
@@ -62,9 +68,9 @@ export default function PackingTab() {
     const trimmed = label.trim()
     if (trimmed.length < 2) return setError('Type an item to add')
     if (items.some((i) => i.label.toLowerCase() === trimmed.toLowerCase())) return setError('That’s already on the list')
-    addPackingItem(trip.id, { label: trimmed, category, ownerId: ownerId || null })
     setLabel('')
     setError('')
+    run(() => actions.add({ label: trimmed, category, ownerId: ownerId || null }))
   }
 
   return (
@@ -138,10 +144,7 @@ export default function PackingTab() {
               variant="ghost"
               size="sm"
               icon={RotateCcw}
-              onClick={() => {
-                resetPacking(trip.id)
-                toast.info('Checklist reset — time to pack again.')
-              }}
+              onClick={() => run(() => actions.reset(), 'Checklist reset — time to pack again.')}
             >
               Uncheck all
             </Button>
@@ -174,7 +177,7 @@ export default function PackingTab() {
                           type="button"
                           role="checkbox"
                           aria-checked={item.packed}
-                          onClick={() => togglePacked(item.id)}
+                          onClick={() => run(() => actions.toggle(item))}
                           className="flex min-w-0 flex-1 items-center gap-3 py-1 text-left"
                         >
                           <span
@@ -190,14 +193,16 @@ export default function PackingTab() {
                           </span>
                         </button>
                         {item.ownerId && usersById[item.ownerId] && <Avatar user={usersById[item.ownerId]} size="xs" />}
-                        <IconButton
-                          icon={Trash2}
-                          label={`Remove ${item.label}`}
-                          size="sm"
-                          variant="danger-ghost"
-                          onClick={() => deletePackingItem(item.id)}
-                          className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
-                        />
+                        {permissions.canDeletePackingItem(item) && (
+                          <IconButton
+                            icon={Trash2}
+                            label={`Remove ${item.label}`}
+                            size="sm"
+                            variant="danger-ghost"
+                            onClick={() => run(() => actions.remove(item.id))}
+                            className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
+                          />
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -221,10 +226,7 @@ export default function PackingTab() {
                 <button
                   key={l}
                   type="button"
-                  onClick={() => {
-                    addPackingItem(trip.id, { label: l, category: cat })
-                    toast.success(`${l} added.`)
-                  }}
+                  onClick={() => run(() => actions.add({ label: l, category: cat }), `${l} added.`)}
                   className="inline-flex items-center gap-1 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-sand-200 transition-all hover:ring-ocean-300 hover:text-ocean-700"
                 >
                   <Plus className="size-3" /> {l}

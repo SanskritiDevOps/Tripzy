@@ -1,7 +1,7 @@
 import { Router } from 'express'
 import { validate } from '../../middleware/validate.js'
 import { leaderOnly } from '../../middleware/tripAccess.js'
-import { createPlaceSchema, lockSchema, placeParams, updatePlaceSchema } from './places.schemas.js'
+import { createPlaceSchema, lockSchema, placeParams, updatePlaceSchema, voteSchema } from './places.schemas.js'
 import * as placesService from './places.service.js'
 
 // Mounted at /api/trips/:tripId/places behind requireAuth + requireTripAccess(),
@@ -41,3 +41,25 @@ placesRouter.patch(
     res.json({ place })
   },
 )
+
+// Any member: their own vote
+placesRouter.put('/:placeId/vote', validate({ params: placeParams, body: voteSchema }), async (req, res) => {
+  res.json({ place: await placesService.castVote(ctx(req), req.body.value) })
+})
+
+placesRouter.delete('/:placeId/vote', validate({ params: placeParams }), async (req, res) => {
+  res.json({ place: await placesService.removeVote(ctx(req)) })
+})
+
+/** Mounted at /api/trips/:tripId/voting — leader only. */
+export const votingRouter = Router({ mergeParams: true })
+
+votingRouter.post('/close', async (req, res) => {
+  const result = await placesService.closeVoting(req.valid.params.tripId, req.user.id)
+  res.json(result)
+})
+
+votingRouter.post('/reopen', async (req, res) => {
+  await placesService.reopenVoting(req.valid.params.tripId, req.user.id)
+  res.status(204).end()
+})

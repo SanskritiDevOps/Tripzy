@@ -16,6 +16,51 @@ enum TripRole {
   MEMBER
 }
 
+/// Every recorded change on a trip (audit log / activity feed).
+enum ActivityAction {
+  TRIP_CREATED
+  TRIP_UPDATED
+  BUDGET_UPDATED
+  PLACE_ADDED
+  PLACE_UPDATED
+  PLACE_DELETED
+  PLACE_LOCKED
+  PLACE_UNLOCKED
+  MEMBER_JOINED
+  MEMBER_LEFT
+  MEMBER_REMOVED
+  INVITE_SENT
+  STOP_ADDED
+  STOP_UPDATED
+  STOP_DELETED
+  STOP_LOCKED
+  STOP_UNLOCKED
+  ITINERARY_REORDERED
+  ITINERARY_GENERATED
+  VOTED
+  VOTING_CLOSED
+  VOTING_REOPENED
+  EXPENSE_ADDED
+  EXPENSE_UPDATED
+  EXPENSE_DELETED
+  SETTLEMENT_RECORDED
+  PACKING_ITEM_ADDED
+  PACKING_ITEM_DELETED
+  PACKING_ITEM_PACKED
+  PACKING_RESET
+}
+
+enum StopSource {
+  MANUAL
+  AI
+}
+
+enum SplitType {
+  EQUAL
+  EXACT
+  PERCENT
+}
+
 enum InviteStatus {
   PENDING
   ACCEPTED
@@ -35,31 +80,42 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  refreshTokens RefreshToken[]
-  ownedTrips    Trip[]         @relation("TripOwner")
-  memberships   TripMember[]
-  placesAdded   Place[]        @relation("PlaceAddedBy")
-  placesLocked  Place[]        @relation("PlaceLockedBy")
-  invitesSent   TripInvite[]   @relation("InviteSentBy")
-  invitesUsed   TripInvite[]   @relation("InviteAcceptedBy")
+  refreshTokens  RefreshToken[]
+  ownedTrips     Trip[]          @relation("TripOwner")
+  memberships    TripMember[]
+  placesAdded    Place[]         @relation("PlaceAddedBy")
+  placesLocked   Place[]         @relation("PlaceLockedBy")
+  invitesSent    TripInvite[]    @relation("InviteSentBy")
+  invitesUsed    TripInvite[]    @relation("InviteAcceptedBy")
+  activities     TripActivity[]
+  votes          Vote[]
+  stopsCreated   ItineraryItem[] @relation("StopCreatedBy")
+  expensesPaid   Expense[]       @relation("ExpensePaidBy")
+  expensesAdded  Expense[]       @relation("ExpenseCreatedBy")
+  expenseShares  ExpenseSplit[]
+  paymentsMade   Settlement[]    @relation("SettlementFrom")
+  paymentsGot    Settlement[]    @relation("SettlementTo")
+  paymentsLogged Settlement[]    @relation("SettlementRecordedBy")
+  packingOwned   PackingItem[]   @relation("PackingOwner")
+  packingAdded   PackingItem[]   @relation("PackingAddedBy")
 
   @@map("users")
 }
 
 /// Opaque refresh tokens, stored as SHA-256 hashes and rotated on every use.
 model RefreshToken {
-  id         String    @id @default(uuid()) @db.Uuid
-  userId     String    @map("user_id") @db.Uuid
-  tokenHash  String    @unique @map("token_hash")
+  id            String    @id @default(uuid()) @db.Uuid
+  userId        String    @map("user_id") @db.Uuid
+  tokenHash     String    @unique @map("token_hash")
   /// Every token issued from one login shares a family; reuse of a rotated
   /// token revokes the whole family.
-  familyId   String    @map("family_id") @db.Uuid
-  expiresAt  DateTime  @map("expires_at")
-  revokedAt  DateTime? @map("revoked_at")
+  familyId      String    @map("family_id") @db.Uuid
+  expiresAt     DateTime  @map("expires_at")
+  revokedAt     DateTime? @map("revoked_at")
   /// ROTATED (exchanged for a new token), LOGOUT, or REUSE (family killed after a replay).
-  revokedReason String? @map("revoked_reason")
-  userAgent  String?   @map("user_agent")
-  createdAt  DateTime  @default(now()) @map("created_at")
+  revokedReason String?   @map("revoked_reason")
+  userAgent     String?   @map("user_agent")
+  createdAt     DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -85,10 +141,15 @@ model Trip {
   createdAt      DateTime  @default(now()) @map("created_at")
   updatedAt      DateTime  @updatedAt @map("updated_at")
 
-  owner   User         @relation("TripOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  members TripMember[]
-  places  Place[]
-  invites TripInvite[]
+  owner         User           @relation("TripOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members       TripMember[]
+  places        Place[]
+  invites       TripInvite[]
+  activities    TripActivity[]
+  itineraryDays ItineraryDay[]
+  expenses      Expense[]
+  settlements   Settlement[]
+  packingItems  PackingItem[]
 
   @@index([ownerId])
   @@map("trips")
@@ -127,9 +188,11 @@ model Place {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  trip     Trip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
-  addedBy  User? @relation("PlaceAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
-  lockedBy User? @relation("PlaceLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
+  trip     Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  addedBy  User?           @relation("PlaceAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
+  lockedBy User?           @relation("PlaceLockedBy", fields: [lockedById], references: [id], onDelete: SetNull)
+  votes    Vote[]
+  stops    ItineraryItem[]
 
   @@index([tripId])
   @@map("places")
@@ -156,4 +219,165 @@ model TripInvite {
   @@index([tripId, status])
   @@index([email])
   @@map("trip_invites")
+}
+
+/// Append-only log of who did what on a trip. Written in the same transaction
+/// as the change it describes, so the log never disagrees with the data.
+model TripActivity {
+  id        String         @id @default(uuid()) @db.Uuid
+  tripId    String         @map("trip_id") @db.Uuid
+  /// Null if the account was deleted later; the entry itself is kept.
+  userId    String?        @map("user_id") @db.Uuid
+  action    ActivityAction
+  /// Snapshot of what changed, e.g. { "placeName": "Amber Fort" }. Names are
+  /// copied in so entries still read correctly after the place is deleted.
+  details   Json           @default("{}")
+  createdAt DateTime       @default(now()) @map("created_at")
+
+  trip Trip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([tripId, createdAt(sort: Desc)])
+  @@map("trip_activities")
+}
+
+/// One vote per user per place (README §10.3).
+model Vote {
+  id        String   @id @default(uuid()) @db.Uuid
+  placeId   String   @map("place_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  /// +1 or -1
+  value     Int      @db.SmallInt
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  place Place @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([placeId, userId])
+  @@map("votes")
+}
+
+/// One row per trip day; kept in step with the trip's start/end dates.
+model ItineraryDay {
+  id        String   @id @default(uuid()) @db.Uuid
+  tripId    String   @map("trip_id") @db.Uuid
+  dayNumber Int      @map("day_number")
+  date      DateTime @db.Date
+
+  trip  Trip            @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  items ItineraryItem[]
+
+  @@unique([tripId, dayNumber])
+  @@map("itinerary_days")
+}
+
+model ItineraryItem {
+  id              String     @id @default(uuid()) @db.Uuid
+  dayId           String     @map("day_id") @db.Uuid
+  placeId         String     @map("place_id") @db.Uuid
+  /// Order within the day
+  position        Int
+  /// "HH:MM"
+  startTime       String     @map("start_time")
+  durationMinutes Int        @map("duration_minutes")
+  /// Locked time slots can only be changed by the team leader; auto-plan never moves them.
+  isLocked        Boolean    @default(false) @map("is_locked")
+  source          StopSource @default(MANUAL)
+  notes           String     @default("")
+  /// Estimated cost for the group, in paise
+  costMinor       Int        @default(0) @map("cost_minor")
+  /// Optimistic concurrency: every write bumps it; stale writes get 409 (README §10.5).
+  version         Int        @default(1)
+  createdById     String?    @map("created_by_id") @db.Uuid
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  day       ItineraryDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+  place     Place        @relation(fields: [placeId], references: [id], onDelete: Cascade)
+  createdBy User?        @relation("StopCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([dayId])
+  @@index([placeId])
+  @@map("itinerary_items")
+}
+
+model Expense {
+  id             String    @id @default(uuid()) @db.Uuid
+  tripId         String    @map("trip_id") @db.Uuid
+  title          String
+  /// Paise — integers only (README §10.1)
+  amountMinor    BigInt    @map("amount_minor")
+  currency       String    @default("INR")
+  paidById       String    @map("paid_by_id") @db.Uuid
+  splitType      SplitType @map("split_type")
+  /// stay | transit | food | activity | shopping | other
+  category       String    @default("other")
+  /// Client-generated key so a retried/double-clicked submit creates one expense (README §10.4).
+  idempotencyKey String    @unique @map("idempotency_key")
+  createdById    String?   @map("created_by_id") @db.Uuid
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  trip      Trip           @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  paidBy    User           @relation("ExpensePaidBy", fields: [paidById], references: [id], onDelete: Cascade)
+  createdBy User?          @relation("ExpenseCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  splits    ExpenseSplit[]
+
+  @@index([tripId])
+  @@map("expenses")
+}
+
+/// Shares always sum exactly to the expense amount (enforced in the service).
+model ExpenseSplit {
+  id         String @id @default(uuid()) @db.Uuid
+  expenseId  String @map("expense_id") @db.Uuid
+  userId     String @map("user_id") @db.Uuid
+  shareMinor BigInt @map("share_minor")
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([expenseId, userId])
+  @@map("expense_splits")
+}
+
+/// A payment made outside Tripzy ("Rahul paid Aman ₹1,200").
+model Settlement {
+  id           String   @id @default(uuid()) @db.Uuid
+  tripId       String   @map("trip_id") @db.Uuid
+  fromUserId   String   @map("from_user_id") @db.Uuid
+  toUserId     String   @map("to_user_id") @db.Uuid
+  amountMinor  BigInt   @map("amount_minor")
+  recordedById String?  @map("recorded_by_id") @db.Uuid
+  settledAt    DateTime @default(now()) @map("settled_at")
+
+  trip       Trip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  fromUser   User  @relation("SettlementFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser     User  @relation("SettlementTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  recordedBy User? @relation("SettlementRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@index([tripId])
+  @@map("settlements")
+}
+
+model PackingItem {
+  id        String   @id @default(uuid()) @db.Uuid
+  tripId    String   @map("trip_id") @db.Uuid
+  label     String
+  /// documents | clothing | toiletries | electronics | health | gear
+  category  String   @default("gear")
+  packed    Boolean  @default(false)
+  /// Who is bringing it (null = everyone)
+  ownerId   String?  @map("owner_id") @db.Uuid
+  addedById String?  @map("added_by_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  trip    Trip  @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  owner   User? @relation("PackingOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  addedBy User? @relation("PackingAddedBy", fields: [addedById], references: [id], onDelete: SetNull)
+
+  @@index([tripId])
+  @@map("packing_items")
 }

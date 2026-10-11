@@ -42,6 +42,30 @@ function buildDays(tripId, startDate, endDate, existing = []) {
   })
 }
 
+/** Auto-plan for a trip (README §11 code-only path). Pure: reads state, returns drafts. */
+function computePlanDrafts(s, tripId, onlyDayId) {
+  let days = s.itineraryDays.filter((d) => d.tripId === tripId).sort((a, b) => a.dayNumber - b.dayNumber)
+  const dayIds = new Set(days.map((d) => d.id))
+  let items = s.itineraryItems.filter((i) => dayIds.has(i.dayId))
+  // Stops are kept when their time slot is locked or their place is locked by the leader.
+  const lockedPlaceIds = new Set(s.places.filter((p) => p.tripId === tripId && p.isLocked).map((p) => p.id))
+  const keepStop = (i) => i.isLocked || lockedPlaceIds.has(i.placeId)
+
+  if (onlyDayId) {
+    // Regenerate one day: drop its unlocked stops, keep locked ones, then refill only that day.
+    items = items.filter((i) => i.dayId !== onlyDayId || keepStop(i))
+    days = days.filter((d) => d.id === onlyDayId)
+  }
+
+  const drafts = autoPlan({
+    days,
+    items,
+    places: s.places.filter((p) => p.tripId === tripId),
+    scores: voteScores(s.votes),
+  })
+  return { drafts, keepStop }
+}
+
 const STARTER_PACKING = [
   ['documents', 'ID / passport'],
   ['documents', 'Tickets & bookings'],
@@ -120,20 +144,12 @@ export const useTripzyStore = create(
                 remote: true,
               }
               const local = trips.find((t) => t.id === remote.id)
+              // Days, stops, votes, expenses and packing for server trips are loaded
+              // by the workspace (syncRemote* below), not built locally.
               if (local) {
                 trips = trips.map((t) => (t.id === remote.id ? { ...t, ...fields } : t))
-                const existing = itineraryDays.filter((d) => d.tripId === remote.id)
-                itineraryDays = [
-                  ...itineraryDays.filter((d) => d.tripId !== remote.id),
-                  ...buildDays(remote.id, remote.startDate, remote.endDate, existing),
-                ]
               } else {
                 trips = [{ ...fields, destinationId: findDestination(remote.destination)?.id ?? null, shareToken: newId('share').slice(6, 18) }, ...trips]
-                itineraryDays = [...itineraryDays, ...buildDays(remote.id, remote.startDate, remote.endDate)]
-                packingItems = [
-                  ...packingItems,
-                  ...STARTER_PACKING.map(([category, label]) => ({ id: newId('pk'), tripId: remote.id, category, label, packed: false, ownerId: null })),
-                ]
               }
             }
             const members = [
@@ -150,6 +166,25 @@ export const useTripzyStore = create(
               itineraryItems: s.itineraryItems.filter((i) => dayIds.has(i.dayId)),
             }
           }),
+
+        // ── Server data for saved trips (replaces that trip's local copy) ──
+        syncRemoteItinerary: (tripId, days) =>
+          set((s) => {
+            const dayIds = new Set(s.itineraryDays.filter((d) => d.tripId === tripId).map((d) => d.id))
+            return {
+              itineraryDays: [...s.itineraryDays.filter((d) => d.tripId !== tripId), ...days.map((d) => ({ id: d.id, tripId, dayNumber: d.dayNumber, date: d.date }))],
+              itineraryItems: [...s.itineraryItems.filter((i) => !dayIds.has(i.dayId)), ...days.flatMap((d) => d.items)],
+            }
+          }),
+
+        syncRemoteExpenses: (tripId, { expenses, settlements }) =>
+          set((s) => ({
+            expenses: [...s.expenses.filter((e) => e.tripId !== tripId), ...expenses],
+            settlements: [...s.settlements.filter((x) => x.tripId !== tripId), ...settlements],
+          })),
+
+        syncRemotePacking: (tripId, items) =>
+          set((s) => ({ packingItems: [...s.packingItems.filter((p) => p.tripId !== tripId), ...items] })),
 
         // ── Trips & members ────────────────────────────────────────────
         /** Adds a trip locally. Pass `id` and `remote: true` for trips already created via POST /api/trips. */
@@ -175,11 +210,14 @@ export const useTripzyStore = create(
           set((s) => ({
             trips: [trip, ...s.trips],
             members: [...s.members, { tripId, userId: currentUserId, role: 'LEADER', joinedAt: now() }],
-            itineraryDays: [...s.itineraryDays, ...buildDays(tripId, startDate, endDate)],
-            packingItems: [
-              ...s.packingItems,
-              ...STARTER_PACKING.map(([category, label]) => ({ id: newId('pk'), tripId, category, label, packed: false, ownerId: null })),
-            ],
+            // Server trips get their days and starter packing list from the API.
+            itineraryDays: remote ? s.itineraryDays : [...s.itineraryDays, ...buildDays(tripId, startDate, endDate)],
+            packingItems: remote
+              ? s.packingItems
+              : [
+                  ...s.packingItems,
+                  ...STARTER_PACKING.map(([category, label]) => ({ id: newId('pk'), tripId, category, label, packed: false, ownerId: null })),
+                ],
           }))
           log(tripId, 'TRIP_CREATED', { name: trip.name })
           return tripId
@@ -358,7 +396,10 @@ export const useTripzyStore = create(
             }))
             const keep = new Set(incoming.map((p) => p.id))
             const tripDayIds = new Set(s.itineraryDays.filter((d) => d.tripId === tripId).map((d) => d.id))
+            const oldPlaceIds = new Set(s.places.filter((p) => p.tripId === tripId).map((p) => p.id))
+            const votes = remotePlaces.flatMap((p) => (p.votes ?? []).map((v) => ({ id: `${p.id}:${v.userId}`, placeId: p.id, userId: v.userId, value: v.value })))
             return {
+              votes: [...s.votes.filter((v) => !oldPlaceIds.has(v.placeId)), ...votes],
               places: [...s.places.filter((p) => p.tripId !== tripId), ...incoming],
               itineraryItems: s.itineraryItems.filter((i) => !tripDayIds.has(i.dayId) || keep.has(i.placeId)),
             }
@@ -437,27 +478,11 @@ export const useTripzyStore = create(
         },
 
         /** Code-only planner (README §11 fallback). Returns the number of stops added. */
+        /** Computes auto-plan drafts without saving them (server trips send these to the API). */
+        planDrafts: (tripId, onlyDayId = null) => computePlanDrafts(get(), tripId, onlyDayId).drafts,
+
         autoPlanTrip: (tripId, onlyDayId = null) => {
-          const s = get()
-          let days = s.itineraryDays.filter((d) => d.tripId === tripId).sort((a, b) => a.dayNumber - b.dayNumber)
-          const dayIds = new Set(days.map((d) => d.id))
-          let items = s.itineraryItems.filter((i) => dayIds.has(i.dayId))
-          // Stops are kept when their time slot is locked or their place is locked by the leader.
-          const lockedPlaceIds = new Set(s.places.filter((p) => p.tripId === tripId && p.isLocked).map((p) => p.id))
-          const keepStop = (i) => i.isLocked || lockedPlaceIds.has(i.placeId)
-
-          if (onlyDayId) {
-            // Regenerate one day: drop its unlocked stops, keep locked ones, then refill only that day.
-            items = items.filter((i) => i.dayId !== onlyDayId || keepStop(i))
-            days = days.filter((d) => d.id === onlyDayId)
-          }
-
-          const drafts = autoPlan({
-            days,
-            items,
-            places: s.places.filter((p) => p.tripId === tripId),
-            scores: voteScores(s.votes),
-          })
+          const { drafts, keepStop } = computePlanDrafts(get(), tripId, onlyDayId)
 
           set((state) => {
             let next = state.itineraryItems

@@ -10,10 +10,10 @@ import { PLACE_CATEGORIES, PLACE_CATEGORY_KEYS } from '../../data/categories'
 import { formatDate, formatDuration } from '../../utils/dates'
 import { toInputValue, toMinor } from '../../utils/money'
 import { nextSlot } from '../../utils/planner'
-import { useTripzyStore } from '../../store/useTripzyStore'
 import { toast } from '../../store/useToastStore'
 import { customPlaceDraft, searchNewPlaces } from '../places/placeSearch'
 import { usePlaceActions } from '../places/usePlaceActions'
+import { useTripActions } from '../trips/useTripActions'
 
 const DURATION_PRESETS = [30, 60, 90, 120, 180]
 
@@ -28,8 +28,8 @@ export function StopFormModal({ open, onClose, ...props }) {
 
 function StopForm({ onClose, trip, places, placesById, itinerary, item = null, initial = {}, canLock = false }) {
   const placeActions = usePlaceActions(trip)
-  const addItineraryItem = useTripzyStore((s) => s.addItineraryItem)
-  const updateItineraryItem = useTripzyStore((s) => s.updateItineraryItem)
+  const { itinerary: actions } = useTripActions(trip)
+  const [saving, setSaving] = useState(false)
 
   const isEdit = Boolean(item)
   const defaultDayId = item?.dayId ?? initial.dayId ?? itinerary.days[0]?.id
@@ -116,7 +116,16 @@ function StopForm({ onClose, trip, places, placesById, itinerary, item = null, i
     }
 
     if (isEdit) {
-      const result = updateItineraryItem(item.id, payload, version)
+      setSaving(true)
+      let result
+      try {
+        result = await actions.updateItem(item.id, payload, version)
+      } catch (error) {
+        setSaving(false)
+        if (error.status !== 401) toast.error(error.message)
+        return
+      }
+      setSaving(false)
       if (result.conflict) {
         toast.error('Someone else just edited this stop. We loaded their latest version — review and save again.')
         setForm(toForm(result.current, placesById[result.current.placeId], result.current.dayId))
@@ -130,7 +139,14 @@ function StopForm({ onClose, trip, places, placesById, itinerary, item = null, i
       }
       toast.success('Stop updated.')
     } else {
-      addItineraryItem(form.dayId, payload)
+      setSaving(true)
+      try {
+        await actions.addItem(form.dayId, payload)
+      } catch (error) {
+        setSaving(false)
+        if (error.status !== 401) toast.error(error.message)
+        return
+      }
       const day = itinerary.days.find((d) => d.id === form.dayId)
       toast.success(`${selected.place.name} added to Day ${day?.dayNumber}.`)
     }
@@ -150,7 +166,9 @@ function StopForm({ onClose, trip, places, placesById, itinerary, item = null, i
           <Button variant="secondary" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={save}>{isEdit ? 'Save stop' : 'Add to itinerary'}</Button>
+          <Button onClick={save} loading={saving}>
+            {isEdit ? 'Save stop' : 'Add to itinerary'}
+          </Button>
         </>
       }
     >

@@ -108,3 +108,32 @@ export function relativeTime(isoDateTime) {
   if (days < 7) return `${days}d ago`
   return new Date(isoDateTime).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
 }
+
+/**
+ * Feed-style timestamps: "just now", "5 minutes ago", "3 hours ago",
+ * "Yesterday at 3:15 PM", "Monday at 9:00 AM", "12 Oct at 6:30 PM".
+ */
+export function relativeTimeLong(isoDateTime, now = new Date()) {
+  const date = new Date(isoDateTime)
+  const minutes = Math.floor((now - date) / 60000)
+  const time = date.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })
+  if (minutes < 1) return 'just now'
+  if (minutes < 60) return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'} ago`
+  const days = daysBetween(toIsoDate(date), toIsoDate(now))
+  if (days === 0) {
+    const hours = Math.floor(minutes / 60)
+    return `${hours} ${hours === 1 ? 'hour' : 'hours'} ago`
+  }
+  if (days === 1) return `Yesterday at ${time}`
+  if (days < 7) return `${date.toLocaleDateString('en-IN', { weekday: 'long' })} at ${time}`
+  return `${date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', ...(date.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) })} at ${time}`
+}
+
+/** Section heading for a day in a feed: "Today", "Yesterday", "Monday, 12 Oct". */
+export function dayHeading(isoDateTime, now = new Date()) {
+  const date = new Date(isoDateTime)
+  const days = daysBetween(toIsoDate(date), toIsoDate(now))
+  if (days === 0) return 'Today'
+  if (days === 1) return 'Yesterday'
+  return date.toLocaleDateString('en-IN', { weekday: 'long', day: 'numeric', month: 'short', ...(date.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }) })
+}

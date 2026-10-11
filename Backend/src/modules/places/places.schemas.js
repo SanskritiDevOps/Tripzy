@@ -26,6 +26,8 @@ export const updatePlaceSchema = z
   .strictObject(Object.fromEntries(Object.entries(placeFields).map(([key, schema]) => [key, schema.optional()])))
   .refine((value) => Object.values(value).some((v) => v !== undefined), 'Nothing to update')
 
+export const voteSchema = z.object({ value: z.union([z.literal(1), z.literal(-1)], { error: 'Vote must be 1 or -1' }) })
+
 export const lockSchema = z.object({ locked: z.boolean({ error: '`locked` must be true or false' }) })
 
 export const placeParams = z.object({ tripId: uuidParam, placeId: uuidParam })

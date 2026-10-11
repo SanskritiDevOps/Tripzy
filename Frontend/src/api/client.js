@@ -31,8 +31,8 @@ export function configureApi(overrides) {
   Object.assign(hooks, overrides)
 }
 
-async function send(path, { method = 'GET', body, token, signal }) {
-  const headers = { Accept: 'application/json' }
+async function send(path, { method = 'GET', body, token, signal, headers: extraHeaders }) {
+  const headers = { Accept: 'application/json', ...extraHeaders }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (token) headers.Authorization = `Bearer ${token}`
 
@@ -85,5 +85,6 @@ export const api = {
   get: (path, options) => request(path, { ...options, method: 'GET' }),
   post: (path, body, options) => request(path, { ...options, method: 'POST', body }),
   patch: (path, body, options) => request(path, { ...options, method: 'PATCH', body }),
+  put: (path, body, options) => request(path, { ...options, method: 'PUT', body }),
   delete: (path, options) => request(path, { ...options, method: 'DELETE' }),
 }

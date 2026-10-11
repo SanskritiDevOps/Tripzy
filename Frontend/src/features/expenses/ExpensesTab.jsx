@@ -9,10 +9,10 @@ import { Menu } from '../../components/ui/Menu'
 import { EmptyState } from '../../components/ui/States'
 import { ConfirmDialog } from '../../components/ui/ConfirmDialog'
 import { ExpenseFormModal } from './ExpenseFormModal'
+import { useTripActions } from '../trips/useTripActions'
 import { BudgetModal } from './BudgetModal'
 import { useTripContext } from '../trips/useTripContext'
 import { useBalances } from '../../store/selectors'
-import { useTripzyStore } from '../../store/useTripzyStore'
 import { toast } from '../../store/useToastStore'
 import { EXPENSE_CATEGORIES, EXPENSE_CATEGORY_KEYS, SPLIT_TYPES } from '../../data/categories'
 import { formatMoney } from '../../utils/money'
@@ -21,8 +21,16 @@ import { relativeTime } from '../../utils/dates'
 export default function ExpensesTab() {
   const { trip, members, expenses, itinerary, currentUserId, usersById, permissions } = useTripContext()
   const { balances, suggested, settlements } = useBalances(trip.id)
-  const recordSettlement = useTripzyStore((s) => s.recordSettlement)
-  const deleteExpense = useTripzyStore((s) => s.deleteExpense)
+  const { expenses: actions } = useTripActions(trip)
+
+  async function run(action, success) {
+    try {
+      await action()
+      toast.success(success)
+    } catch (error) {
+      if (error.status !== 401) toast.error(error.message)
+    }
+  }
 
   const [expenseModal, setExpenseModal] = useState(null) // { expense? }
   const [deleting, setDeleting] = useState(null)
@@ -188,8 +196,9 @@ export default function ExpensesTab() {
                     </div>
                     <Menu
                       items={[
-                        { label: 'Edit expense', icon: Pencil, onClick: () => setExpenseModal({ expense }) },
-                        { label: 'Delete expense', icon: Trash2, onClick: () => setDeleting(expense), danger: true },
+                        // Whoever added the expense, or the team leader (enforced by the API too).
+                        { label: 'Edit expense', icon: Pencil, onClick: () => setExpenseModal({ expense }), hidden: !permissions.canEditExpense(expense) },
+                        { label: 'Delete expense', icon: Trash2, onClick: () => setDeleting(expense), danger: true, hidden: !permissions.canEditExpense(expense) },
                       ]}
                     />
                   </li>
@@ -280,9 +289,11 @@ export default function ExpensesTab() {
                     </div>
                     <div className="mt-2 flex items-center justify-between">
                       <span className="font-display text-lg font-semibold tabular-nums">{formatMoney(p.amountMinor)}</span>
-                      <Button size="sm" variant="secondary" icon={CheckCheck} onClick={() => setSettling(p)}>
-                        Mark paid
-                      </Button>
+                      {permissions.canRecordSettlement(p) && (
+                        <Button size="sm" variant="secondary" icon={CheckCheck} onClick={() => setSettling(p)}>
+                          Mark paid
+                        </Button>
+                      )}
                     </div>
                   </li>
                 ))}
@@ -318,8 +329,8 @@ export default function ExpensesTab() {
         description={`“${deleting?.title}” (${formatMoney(deleting?.amountMinor ?? 0)}) will be removed and balances recalculated. This is recorded in the activity log.`}
         confirmLabel="Delete expense"
         onConfirm={() => {
-          deleteExpense(deleting.id)
-          toast.success('Expense deleted.')
+          const target = deleting
+          run(() => actions.remove(target.id), 'Expense deleted.')
         }}
       />
       <ConfirmDialog
@@ -330,8 +341,8 @@ export default function ExpensesTab() {
         description={settling ? `${name(settling.fromUser)} paid ${name(settling.toUser)} ${formatMoney(settling.amountMinor)} outside Tripzy (cash, UPI, bank).` : ''}
         confirmLabel="Mark as paid"
         onConfirm={() => {
-          recordSettlement(trip.id, settling)
-          toast.success('Payment recorded. Balances updated.')
+          const payment = settling
+          run(() => actions.settle(payment), 'Payment recorded. Balances updated.')
         }}
       />
     </div>
