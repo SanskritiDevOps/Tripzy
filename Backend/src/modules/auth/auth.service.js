@@ -128,7 +128,13 @@ export async function refresh(rawToken, meta = {}) {
   if (stored.revokedAt) {
     const justRotated = stored.revokedReason === 'ROTATED' && Date.now() - stored.revokedAt.getTime() < ROTATION_GRACE_MS
     if (justRotated) {
-      throw AppError.unauthorized('Session was refreshed in another tab. Retry.', { code: 'REFRESH_RACE' })
+      // Just used: either another tab won the race, or the browser never received the
+      // token we issued (reload / navigation / network drop mid-request). Rejecting it
+      // would log the user out, so within the grace window we issue a fresh token in
+      // the same family — unless that session was logged out or flagged since.
+      const ended = await prisma.refreshToken.count({ where: { familyId: stored.familyId, revokedReason: { in: ['LOGOUT', 'REUSE'] } } })
+      if (ended) throw invalid()
+      return issueSession(stored.user, { ...meta, familyId: stored.familyId })
     }
     await revokeFamily(stored.familyId, 'REUSE')
     throw invalid()

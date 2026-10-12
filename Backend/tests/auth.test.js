@@ -80,13 +80,35 @@ describe('refresh token rotation', () => {
     await request(app).post('/api/auth/refresh').set('Cookie', first.headers['set-cookie']).expect(401)
   })
 
-  it('treats two tabs refreshing at once as a retryable race, not theft', async () => {
+  it('a just-used token still works within the grace window (lost reply, or another tab won the race)', async () => {
     const { cookie } = await signUp()
-    const winner = await request(app).post('/api/auth/refresh').set('Cookie', cookie).expect(200)
-    const loser = await request(app).post('/api/auth/refresh').set('Cookie', cookie).expect(401)
-    expect(loser.body.code).toBe('REFRESH_RACE')
-    // The winning tab's new token is still valid.
-    await request(app).post('/api/auth/refresh').set('Cookie', winner.headers['set-cookie']).expect(200)
+    const first = await request(app).post('/api/auth/refresh').set('Cookie', cookie).expect(200)
+    // The browser never got `first` (e.g. the page reloaded mid-request) and sends the old token again.
+    const retry = await request(app).post('/api/auth/refresh').set('Cookie', cookie).expect(200)
+    expect(retry.body.accessToken).toEqual(expect.any(String))
+    // Both new tokens are valid; nobody is logged out.
+    await request(app).post('/api/auth/refresh').set('Cookie', retry.headers['set-cookie']).expect(200)
+    await request(app).post('/api/auth/refresh').set('Cookie', first.headers['set-cookie']).expect(200)
+  })
+
+  it('the grace window never revives a logged-out session', async () => {
+    const { cookie } = await signUp()
+    const first = await request(app).post('/api/auth/refresh').set('Cookie', cookie).expect(200)
+    await request(app).post('/api/auth/logout').set('Cookie', first.headers['set-cookie']).expect(204)
+    const res = await request(app).post('/api/auth/refresh').set('Cookie', cookie).expect(401) // old token, still inside the window
+    expect(res.body.code).toBe('INVALID_REFRESH_TOKEN')
+  })
+
+  it('the grace window never revives a session flagged for token reuse', async () => {
+    const { cookie } = await signUp()
+    const first = await request(app).post('/api/auth/refresh').set('Cookie', cookie).expect(200)
+    const second = await request(app).post('/api/auth/refresh').set('Cookie', first.headers['set-cookie']).expect(200)
+    // `first` replayed long after it was rotated → theft → the whole family is revoked…
+    await prisma.refreshToken.updateMany({ where: { revokedReason: 'ROTATED' }, data: { revokedAt: new Date(Date.now() - 60_000) } })
+    await request(app).post('/api/auth/refresh').set('Cookie', first.headers['set-cookie']).expect(401)
+    // …so even tokens still inside a grace window, and the newest one, are dead.
+    await request(app).post('/api/auth/refresh').set('Cookie', second.headers['set-cookie']).expect(401)
+    await request(app).post('/api/auth/refresh').set('Cookie', cookie).expect(401)
   })
 
   it('logout revokes the session', async () => {

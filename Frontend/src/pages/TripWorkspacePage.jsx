@@ -1,5 +1,5 @@
 import { Suspense, useMemo, useState } from 'react'
-import { NavLink, Outlet, useNavigate, useParams } from 'react-router-dom'
+import { NavLink, Outlet, useLocation, useNavigate, useParams } from 'react-router-dom'
 import clsx from 'clsx'
 import {
   Activity,
@@ -50,6 +50,9 @@ import { LiveIndicator } from '../features/trips/LiveIndicator'
 import { getTripPermissions, ROLE_LABELS } from '../features/trips/permissions'
 import { Badge } from '../components/ui/Badge'
 import { formatDateRange } from '../utils/dates'
+import { ErrorBoundary } from '../components/errors/ErrorBoundary'
+import { ErrorScreen } from '../components/errors/ErrorScreen'
+import { DevCrash } from '../components/errors/DevCrash'
 
 const TABS = [
   { to: 'itinerary', label: 'Itinerary', icon: CalendarRange },
@@ -60,6 +63,7 @@ const TABS = [
 
 export function TripWorkspacePage() {
   const { tripId } = useParams()
+  const { pathname } = useLocation()
   const navigate = useNavigate()
   const trip = useTrip(tripId)
   const membership = useMembership(tripId)
@@ -199,13 +203,17 @@ export function TripWorkspacePage() {
       </div>
 
       <div className="mx-auto max-w-7xl px-4 pt-6 sm:px-6 lg:px-8">
-        {/* Saved trips: wait for the shared data so nobody briefly sees an empty plan. */}
+        {/* Saved trips: wait for the shared data so nobody briefly sees an empty plan.
+            One tab crashing leaves the trip header and the other tabs usable. */}
         {loadingTripData ? (
           <PanelSkeleton />
         ) : (
-          <Suspense fallback={<PanelSkeleton />}>
-            <Outlet context={context} />
-          </Suspense>
+          <ErrorBoundary name="Trip tab" resetKey={pathname} fallback={(props) => <ErrorScreen {...props} variant="panel" />}>
+            <Suspense fallback={<PanelSkeleton />}>
+              <DevCrash where="tab" />
+              <Outlet context={context} />
+            </Suspense>
+          </ErrorBoundary>
         )}
       </div>
 

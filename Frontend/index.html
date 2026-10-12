@@ -16,6 +16,37 @@
   </head>
   <body>
     <div id="root"></div>
+    <noscript>
+      <p style="font-family: system-ui, sans-serif; padding: 2rem; text-align: center">Tripzy needs JavaScript to run. Please enable it and reload.</p>
+    </noscript>
+    <script>
+      // Safety net for when the app's code can't load at all (bad deploy, network drop):
+      // React never starts, so its error screens can't help. Show a plain message instead
+      // of a blank page. Only acts if the app hasn't rendered anything.
+      ;(function () {
+        function showFallback() {
+          var root = document.getElementById('root')
+          if (!root || root.childElementCount > 0) return
+          root.innerHTML =
+            '<div role="alert" style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#faf7f2;font-family:system-ui,-apple-system,Segoe UI,sans-serif;color:#0f172a;text-align:center">' +
+            '<div style="max-width:420px"><p style="font-size:22px;font-weight:700;margin:0 0 8px">Tripzy couldn’t load</p>' +
+            '<p style="color:#64748b;margin:0 0 20px;line-height:1.5">Check your connection and try again. Your trips are safe.</p>' +
+            '<button type="button" onclick="location.reload()" style="background:#1d5967;color:#fff;border:0;border-radius:12px;padding:10px 18px;font-weight:600;font-size:15px;cursor:pointer">Reload</button></div></div>'
+        }
+        window.addEventListener(
+          'error',
+          function (event) {
+            var target = event.target
+            var scriptFailed = target && target.tagName === 'SCRIPT'
+            if (scriptFailed || event.error) setTimeout(showFallback, 100)
+          },
+          true,
+        )
+        window.addEventListener('unhandledrejection', function () {
+          setTimeout(showFallback, 100)
+        })
+      })()
+    </script>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
