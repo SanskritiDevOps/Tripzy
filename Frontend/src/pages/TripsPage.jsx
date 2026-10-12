@@ -36,6 +36,11 @@ export function TripsPage() {
     for (const m of members) if (byTrip[m.tripId] && usersById[m.userId]) byTrip[m.tripId].members.push(usersById[m.userId])
     for (const p of places) if (byTrip[p.tripId]) byTrip[p.tripId].placeCount += 1
     for (const e of expenses) if (byTrip[e.tripId]) byTrip[e.tripId].spentMinor += e.amountMinor
+    // Saved trips: use the server's counts. This browser only has a trip's places and
+    // expenses once it has been opened here (and they may be out of date).
+    for (const trip of trips) {
+      if (trip.remote && trip.stats) Object.assign(byTrip[trip.id], { placeCount: trip.stats.placeCount, spentMinor: trip.stats.spentMinor })
+    }
     return byTrip
   }, [trips, members, places, expenses, usersById])
 

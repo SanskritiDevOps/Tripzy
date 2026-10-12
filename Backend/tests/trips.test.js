@@ -103,3 +103,26 @@ describe('role-based access on a trip', () => {
     await request(app).delete(`/api/trips/${trip.id}/members/${member.user.id}`).set(auth(member.token)).expect(204)
   })
 })
+
+describe('GET /api/trips card stats', () => {
+  it('includes the place count and total spent, so cards are right on any device', async () => {
+    const t = await tripWithTeam()
+    for (const name of ['Amber Fort', 'Hawa Mahal']) {
+      await request(app).post(`/api/trips/${t.trip.id}/places`).set(auth(t.member.token)).send({ name, lat: 26.9, lng: 75.8 }).expect(201)
+    }
+    for (const amountMinor of [10000, 2550]) {
+      await request(app)
+        .post(`/api/trips/${t.trip.id}/expenses`)
+        .set(auth(t.leader.token))
+        .set('Idempotency-Key', `stats-${amountMinor}-${Date.now()}`)
+        .send({ title: 'Snacks', amountMinor, paidBy: t.leader.user.id, splitType: 'EQUAL', category: 'food', participants: [{ userId: t.leader.user.id }] })
+        .expect(201)
+    }
+    const res = await request(app).get('/api/trips').set(auth(t.member.token)).expect(200)
+    expect(res.body.trips[0].stats).toEqual({ placeCount: 2, spentMinor: 12550 })
+
+    const empty = await request(app).post('/api/trips').set(auth(t.member.token)).send({ ...tripBody, name: 'Empty one' }).expect(201)
+    const again = await request(app).get('/api/trips').set(auth(t.member.token)).expect(200)
+    expect(again.body.trips.find((x) => x.id === empty.body.trip.id).stats).toEqual({ placeCount: 0, spentMinor: 0 })
+  })
+})

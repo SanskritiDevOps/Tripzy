@@ -11,6 +11,7 @@ import { buildSplits, formatMoney, splitEqual, toInputValue, toMinor } from '../
 import { newId } from '../../store/useTripzyStore'
 import { useTripActions } from '../trips/useTripActions'
 import { toast } from '../../store/useToastStore'
+import { useUsersById } from '../../store/selectors'
 
 export function ExpenseFormModal({ open, onClose, ...props }) {
   return open ? <ExpenseForm onClose={onClose} {...props} /> : null
@@ -26,9 +27,17 @@ function initialParticipants(members, expense) {
   })
 }
 
-function ExpenseForm({ onClose, trip, members, currentUserId, expense = null }) {
+function ExpenseForm({ onClose, trip, members: currentMembers, currentUserId, expense = null }) {
   const { expenses: actions } = useTripActions(trip)
   const isEdit = Boolean(expense)
+  const usersById = useUsersById()
+  // Editing an old expense: people who were on it stay listed even if they've since
+  // left the trip, so saving never silently drops their share or changes the payer.
+  const [members] = useState(() => {
+    const ids = new Set(currentMembers.map((m) => m.id))
+    const former = expense ? [expense.paidBy, ...expense.splits.map((s) => s.userId)].filter((id, i, all) => !ids.has(id) && all.indexOf(id) === i) : []
+    return [...currentMembers, ...former.map((id) => ({ id, name: usersById[id]?.name ?? 'Former member', avatarUrl: usersById[id]?.avatarUrl ?? null, color: usersById[id]?.color, left: true }))]
+  })
 
   // One key per modal session: retries / double-clicks can't create duplicates.
   const [idempotencyKey] = useState(() => newId('idem'))
@@ -146,7 +155,7 @@ function ExpenseForm({ onClose, trip, members, currentUserId, expense = null }) 
               <Select id={id} value={paidBy} onChange={(e) => setPaidBy(e.target.value)}>
                 {members.map((m) => (
                   <option key={m.id} value={m.id}>
-                    {m.id === currentUserId ? `${m.name} (you)` : m.name}
+                    {m.id === currentUserId ? `${m.name} (you)` : m.left ? `${m.name} (left the trip)` : m.name}
                   </option>
                 ))}
               </Select>
@@ -197,6 +206,7 @@ function ExpenseForm({ onClose, trip, members, currentUserId, expense = null }) 
                   <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
                     {member.name.split(' ')[0]}
                     {member.id === currentUserId && <span className="text-slate-400"> (you)</span>}
+                    {member.left && <span className="text-slate-400"> (left the trip)</span>}
                   </span>
                   {splitType === 'EQUAL' ? (
                     <span className="text-sm font-semibold text-slate-700 tabular-nums">

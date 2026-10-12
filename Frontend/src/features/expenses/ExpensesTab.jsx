@@ -56,6 +56,7 @@ export default function ExpensesTab() {
   const visible = filter === 'all' ? expenses : expenses.filter((e) => e.category === filter)
   const over = trip.budgetMinor > 0 && spent > trip.budgetMinor
   const name = (id) => (id === currentUserId ? 'You' : usersById[id]?.name.split(' ')[0] ?? 'Someone')
+  const memberIds = new Set(members.map((m) => m.id))
 
   return (
     <div className="space-y-6">
@@ -250,7 +251,10 @@ export default function ExpensesTab() {
                 return (
                   <li key={b.userId} className="flex items-center gap-3">
                     <Avatar user={member} size="sm" />
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">{b.userId === currentUserId ? 'You' : member?.name}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
+                      {b.userId === currentUserId ? 'You' : (member?.name ?? 'Former member')}
+                      {!memberIds.has(b.userId) && <span className="font-normal text-slate-400"> · left the trip</span>}
+                    </span>
                     <span
                       className={clsx(
                         'text-sm font-semibold tabular-nums',

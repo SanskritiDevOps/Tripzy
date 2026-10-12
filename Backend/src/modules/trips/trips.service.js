@@ -89,11 +89,19 @@ export async function createTrip(userId, input) {
 export async function listTripsForUser(userId) {
   const trips = await prisma.trip.findMany({
     where: { members: { some: { userId } } },
-    include: memberInclude,
+    include: { ...memberInclude, _count: { select: { places: true } } },
     orderBy: { startDate: 'asc' },
   })
   backfillCentres(trips)
-  return trips.map((trip) => serializeTrip(trip, userId))
+  // Card stats for "My trips", so they're right before a trip has been opened on this device.
+  const spent = trips.length
+    ? await prisma.expense.groupBy({ by: ['tripId'], where: { tripId: { in: trips.map((t) => t.id) } }, _sum: { amountMinor: true } })
+    : []
+  const spentByTrip = new Map(spent.map((row) => [row.tripId, Number(row._sum.amountMinor ?? 0)]))
+  return trips.map((trip) => ({
+    ...serializeTrip(trip, userId),
+    stats: { placeCount: trip._count.places, spentMinor: spentByTrip.get(trip.id) ?? 0 },
+  }))
 }
 
 /**

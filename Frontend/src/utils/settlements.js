@@ -5,30 +5,30 @@
  * Positive → should receive money, negative → should pay.
  */
 export function computeBalances(memberIds, expenses, settlements) {
-  const net = Object.fromEntries(memberIds.map((id) => [id, 0]))
-  const paid = Object.fromEntries(memberIds.map((id) => [id, 0]))
-  const owed = Object.fromEntries(memberIds.map((id) => [id, 0]))
+  // Current members first; anyone else the money mentions (people who left the
+  // trip) gets a row too, so their debts don't silently disappear.
+  const rows = new Map(memberIds.map((id) => [id, { userId: id, netMinor: 0, paidMinor: 0, owedMinor: 0 }]))
+  const row = (id) => {
+    if (!rows.has(id)) rows.set(id, { userId: id, netMinor: 0, paidMinor: 0, owedMinor: 0 })
+    return rows.get(id)
+  }
 
   for (const expense of expenses) {
-    if (expense.paidBy in net) {
-      net[expense.paidBy] += expense.amountMinor
-      paid[expense.paidBy] += expense.amountMinor
-    }
+    row(expense.paidBy).netMinor += expense.amountMinor
+    row(expense.paidBy).paidMinor += expense.amountMinor
     for (const split of expense.splits) {
-      if (split.userId in net) {
-        net[split.userId] -= split.shareMinor
-        owed[split.userId] += split.shareMinor
-      }
+      row(split.userId).netMinor -= split.shareMinor
+      row(split.userId).owedMinor += split.shareMinor
     }
   }
 
   // A settlement "from → to" means `from` paid back `to`.
   for (const s of settlements) {
-    if (s.fromUser in net) net[s.fromUser] += s.amountMinor
-    if (s.toUser in net) net[s.toUser] -= s.amountMinor
+    row(s.fromUser).netMinor += s.amountMinor
+    row(s.toUser).netMinor -= s.amountMinor
   }
 
-  return memberIds.map((userId) => ({ userId, netMinor: net[userId], paidMinor: paid[userId], owedMinor: owed[userId] }))
+  return [...rows.values()]
 }
 
 /**

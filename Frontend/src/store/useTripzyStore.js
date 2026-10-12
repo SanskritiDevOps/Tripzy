@@ -108,7 +108,38 @@ export const useTripzyStore = create(
             users: s.users.map((u) => (u.id === user.id ? { ...u, name: user.name, email: user.email, avatarUrl: user.avatarUrl ?? null } : u)),
           }))
         },
-        detachSessionUser: () => set({ currentUserId: null }),
+        /**
+         * On logout, drop every saved (server) trip from this browser: their places,
+         * expenses and members' emails are stored in localStorage and would
+         * otherwise stay readable on a shared computer. They reload from the server
+         * on the next login. Bundled demo trips stay.
+         */
+        detachSessionUser: () =>
+          set((s) => {
+            const gone = new Set(s.trips.filter((t) => t.remote).map((t) => t.id))
+            if (gone.size === 0) return { currentUserId: null }
+            const keep = (row) => !gone.has(row.tripId)
+            const dayIds = new Set(s.itineraryDays.filter((d) => gone.has(d.tripId)).map((d) => d.id))
+            const placeIds = new Set(s.places.filter((pl) => gone.has(pl.tripId)).map((pl) => pl.id))
+            const members = s.members.filter(keep)
+            const stillNeeded = new Set([s.sessionUserId, ...members.map((m) => m.userId)])
+            return {
+              currentUserId: null,
+              trips: s.trips.filter((t) => !gone.has(t.id)),
+              members,
+              users: s.users.filter((u) => stillNeeded.has(u.id)),
+              invites: s.invites.filter(keep),
+              places: s.places.filter(keep),
+              votes: s.votes.filter((v) => !placeIds.has(v.placeId)),
+              itineraryDays: s.itineraryDays.filter(keep),
+              itineraryItems: s.itineraryItems.filter((i) => !dayIds.has(i.dayId)),
+              expenses: s.expenses.filter(keep),
+              settlements: s.settlements.filter(keep),
+              packingItems: s.packingItems.filter(keep),
+              activity: s.activity.filter(keep),
+              presence: Object.fromEntries(Object.entries(s.presence).filter(([tripId]) => !gone.has(tripId))),
+            }
+          }),
 
         /**
          * Mirrors trips stored on the server (GET /api/trips) into local state:
@@ -133,8 +164,12 @@ export const useTripzyStore = create(
                 id: remote.id,
                 name: remote.name,
                 destination: remote.destination,
+                // Recomputed every sync: someone may have changed the destination.
+                destinationId: findDestination(remote.destination)?.id ?? null,
                 destinationLat: remote.destinationLat ?? null,
                 destinationLng: remote.destinationLng ?? null,
+                // Server-side card stats (place count, total spent) for "My trips".
+                stats: remote.stats ?? null,
                 startDate: remote.startDate,
                 endDate: remote.endDate,
                 currency: remote.currency,
@@ -151,7 +186,7 @@ export const useTripzyStore = create(
               if (local) {
                 trips = trips.map((t) => (t.id === remote.id ? { ...t, ...fields } : t))
               } else {
-                trips = [{ ...fields, destinationId: findDestination(remote.destination)?.id ?? null, shareToken: newId('share').slice(6, 18) }, ...trips]
+                trips = [{ ...fields, shareToken: newId('share').slice(6, 18) }, ...trips]
               }
             }
             const members = [
@@ -179,11 +214,20 @@ export const useTripzyStore = create(
             }
           }),
 
-        syncRemoteExpenses: (tripId, { expenses, settlements }) =>
-          set((s) => ({
-            expenses: [...s.expenses.filter((e) => e.tripId !== tripId), ...expenses],
-            settlements: [...s.settlements.filter((x) => x.tripId !== tripId), ...settlements],
-          })),
+        /** `people`: everyone the money mentions, including members who have left (so their names still show). */
+        syncRemoteExpenses: (tripId, { expenses, settlements, people = [] }) =>
+          set((s) => {
+            const users = [...s.users]
+            for (const person of people) {
+              if (users.some((u) => u.id === person.id)) continue
+              users.push({ id: person.id, name: person.name, email: '', avatarUrl: person.avatarUrl ?? null, color: AVATAR_COLORS[users.length % AVATAR_COLORS.length] })
+            }
+            return {
+              users,
+              expenses: [...s.expenses.filter((e) => e.tripId !== tripId), ...expenses],
+              settlements: [...s.settlements.filter((x) => x.tripId !== tripId), ...settlements],
+            }
+          }),
 
         syncRemotePacking: (tripId, items) =>
           set((s) => ({ packingItems: [...s.packingItems.filter((p) => p.tripId !== tripId), ...items] })),

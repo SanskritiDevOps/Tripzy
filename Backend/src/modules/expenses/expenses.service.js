@@ -39,11 +39,16 @@ async function memberIds(db, tripId) {
   return new Set((await db.tripMember.findMany({ where: { tripId }, select: { userId: true } })).map((m) => m.userId))
 }
 
-/** Splits are built on the server, so shares always add up to the amount exactly. */
-async function prepare(db, tripId, input) {
+/**
+ * Splits are built on the server, so shares always add up to the amount exactly.
+ * `alreadyInvolved`: when editing, people who were on this expense before may stay
+ * even if they've since left the trip (their share and debts are still real).
+ */
+async function prepare(db, tripId, input, alreadyInvolved = new Set()) {
   const members = await memberIds(db, tripId)
-  if (!members.has(input.paidBy)) throw AppError.badRequest('The payer must be a member of this trip.', { code: 'VALIDATION_ERROR', details: { paidBy: 'Not a trip member' } })
-  if (input.participants.some((p) => !members.has(p.userId))) {
+  const allowed = (id) => members.has(id) || alreadyInvolved.has(id)
+  if (!allowed(input.paidBy)) throw AppError.badRequest('The payer must be a member of this trip.', { code: 'VALIDATION_ERROR', details: { paidBy: 'Not a trip member' } })
+  if (input.participants.some((p) => !allowed(p.userId))) {
     throw AppError.badRequest('Everyone sharing the expense must be a member of this trip.', { code: 'VALIDATION_ERROR', details: { participants: 'Not a trip member' } })
   }
   const result = buildSplits(input)
@@ -66,7 +71,21 @@ export async function listExpenses(tripId) {
     prisma.expense.findMany({ where: { tripId }, include: { splits: true }, orderBy: { createdAt: 'desc' } }),
     prisma.settlement.findMany({ where: { tripId }, orderBy: { settledAt: 'desc' } }),
   ])
-  return { expenses: expenses.map(serializeExpense), settlements: settlements.map(serializeSettlement) }
+  // Everyone the money mentions — including people who have since left the trip,
+  // so clients can still show their names next to old expenses and balances.
+  const ids = new Set([
+    ...expenses.flatMap((e) => [e.paidById, ...e.splits.map((split) => split.userId)]),
+    ...settlements.flatMap((x) => [x.fromUserId, x.toUserId]),
+  ])
+  const [users, members] = await Promise.all([
+    ids.size ? prisma.user.findMany({ where: { id: { in: [...ids] } }, select: { id: true, name: true, avatarUrl: true } }) : [],
+    memberIds(prisma, tripId),
+  ])
+  return {
+    expenses: expenses.map(serializeExpense),
+    settlements: settlements.map(serializeSettlement),
+    people: users.map((u) => ({ ...u, isMember: members.has(u.id) })),
+  }
 }
 
 /**
@@ -122,7 +141,8 @@ export async function updateExpense({ tripId, userId, role, expenseId }, input) 
   const expense = await findExpense(tripId, expenseId)
   assertCanChange(expense, { userId, role })
   const updated = await prisma.$transaction(async (tx) => {
-    const splits = await prepare(tx, tripId, input)
+    const involved = new Set([expense.paidById, ...expense.splits.map((split) => split.userId)])
+    const splits = await prepare(tx, tripId, input, involved)
     await tx.expenseSplit.deleteMany({ where: { expenseId } })
     const result = await tx.expense.update({
       where: { id: expenseId },

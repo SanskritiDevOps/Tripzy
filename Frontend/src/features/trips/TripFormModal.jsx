@@ -16,6 +16,7 @@ import { toInputValue, toMinor } from '../../utils/money'
 import { useTripzyStore } from '../../store/useTripzyStore'
 import { toast } from '../../store/useToastStore'
 import { tripsApi } from '../../api/endpoints'
+import { syncItinerary, syncTrips } from './remoteData'
 import { ApiError } from '../../api/client'
 
 const schema = z
@@ -88,13 +89,17 @@ function TripForm({ onClose, trip, prefill, permissions }) {
         const budgetChanged = canSetBudget && budgetMinor !== trip.budgetMinor
         // Trips stored on the server are saved there first; bundled demo trips are local only.
         // Details and budget are separate endpoints: any member may edit details, only the leader the budget.
+        const shrinking = tripLength(values.startDate, values.endDate) < tripLength(trip.startDate, trip.endDate)
         if (trip.remote) {
           const { name, destination, startDate, endDate, groupType } = apiPayload
           await tripsApi.update(trip.id, { name, destination, startDate, endDate, groupType })
           if (budgetChanged) await tripsApi.updateBudget(trip.id, budgetMinor)
+          // The server owns the trip's days (new dates add or remove them with real ids) and
+          // its map centre — reload both rather than rebuilding them in the browser.
+          await Promise.all([syncTrips(), syncItinerary(trip.id)])
+        } else {
+          updateTrip(trip.id, budgetChanged ? localPayload : details)
         }
-        const shrinking = tripLength(values.startDate, values.endDate) < tripLength(trip.startDate, trip.endDate)
-        updateTrip(trip.id, budgetChanged ? localPayload : details)
         toast.success(shrinking ? 'Trip updated. Days past the new end date were removed.' : 'Trip updated.')
         onClose()
       } else {

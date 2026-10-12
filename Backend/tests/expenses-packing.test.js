@@ -146,3 +146,44 @@ describe('packing list', () => {
     await request(app).get(`/api/trips/${t.trip.id}/expenses`).set(auth(stranger.token)).expect(403)
   })
 })
+
+describe('expenses after someone leaves the trip', () => {
+  async function leaveAfterDinner() {
+    const t = await tripWithTeam()
+    const res = await addExpense(t, t.member, { paidBy: t.member.user.id }).expect(201)
+    await request(app).delete(`/api/trips/${t.trip.id}/members/${t.member.user.id}`).set(auth(t.leader.token)).expect(204)
+    return { t, expense: res.body.expense }
+  }
+
+  it('still lists their name (marked as no longer a member) and keeps their balance', async () => {
+    const { t } = await leaveAfterDinner()
+    const res = await request(app).get(`/api/trips/${t.trip.id}/expenses`).set(auth(t.leader.token)).expect(200)
+    const people = Object.fromEntries(res.body.people.map((p) => [p.id, p]))
+    expect(people[t.member.user.id]).toMatchObject({ name: t.member.user.name, isMember: false })
+    expect(people[t.leader.user.id]).toMatchObject({ isMember: true })
+    const balances = await request(app).get(`/api/trips/${t.trip.id}/balances`).set(auth(t.leader.token)).expect(200)
+    expect(balances.body.suggested).toEqual([{ fromUser: t.leader.user.id, toUser: t.member.user.id, amountMinor: 5000 }])
+  })
+
+  it('lets the leader edit an old expense without dropping the person who left', async () => {
+    const { t, expense } = await leaveAfterDinner()
+    const res = await request(app)
+      .patch(`/api/trips/${t.trip.id}/expenses/${expense.id}`)
+      .set(auth(t.leader.token))
+      .send({ title: 'Dinner at the shack', amountMinor: 12000, paidBy: t.member.user.id, splitType: 'EQUAL', category: 'food', participants: [{ userId: t.leader.user.id }, { userId: t.member.user.id }] })
+      .expect(200)
+    expect(res.body.expense).toMatchObject({ title: 'Dinner at the shack', paidBy: t.member.user.id })
+    expect(res.body.expense.splits.map((s) => s.shareMinor)).toEqual([6000, 6000])
+  })
+
+  it('does not let a former member be added to a new or different expense', async () => {
+    const { t } = await leaveAfterDinner()
+    await addExpense(t, t.leader, { paidBy: t.leader.user.id }).expect(400) // participants include the former member
+    const other = await addExpense(t, t.leader, { paidBy: t.leader.user.id, participants: [{ userId: t.leader.user.id }] }).expect(201)
+    await request(app)
+      .patch(`/api/trips/${t.trip.id}/expenses/${other.body.expense.id}`)
+      .set(auth(t.leader.token))
+      .send({ title: 'Taxi', amountMinor: 10000, paidBy: t.leader.user.id, splitType: 'EQUAL', category: 'transit', participants: [{ userId: t.leader.user.id }, { userId: t.member.user.id }] })
+      .expect(400)
+  })
+})
