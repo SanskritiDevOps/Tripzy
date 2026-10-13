@@ -6,6 +6,8 @@ services:
     name: tripzy-api
     runtime: node
     plan: free
+    # Same region as the Neon database (AWS Singapore) and close to users in India.
+    region: singapore
     rootDir: Backend
     # --include=dev: the Prisma CLI (a dev dependency) is needed to generate the
     # client and apply migrations during the build, even with NODE_ENV=production.
