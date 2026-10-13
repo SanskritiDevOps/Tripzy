@@ -132,7 +132,7 @@ describe('health and caching', () => {
     const plain = await request(app).get('/health').expect(200)
     expect(plain.body).toEqual({ status: 'ok', database: 'up' })
     const viaApi = await request(app).get('/api/health').set('X-Forwarded-For', '203.0.113.9').expect(200)
-    expect(viaApi.body).toMatchObject({ status: 'ok', database: 'up', yourIp: expect.any(String) })
+    expect(viaApi.body).toMatchObject({ status: 'ok', database: 'up', yourIp: expect.any(String), forwardedFor: '203.0.113.9' })
   })
 
   it('marks API responses as never cacheable by proxies', async () => {

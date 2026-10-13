@@ -53,7 +53,8 @@ export function createApp() {
     res.set('Cache-Control', 'no-store')
     try {
       await prisma.$queryRaw`SELECT 1`
-      res.json({ status: 'ok', database: 'up', ...(req.path === '/api/health' ? { yourIp: req.ip } : {}) })
+      // The caller's own IP and proxy chain only — used to set TRUST_PROXY correctly.
+      res.json({ status: 'ok', database: 'up', ...(req.path === '/api/health' ? { yourIp: req.ip, forwardedFor: req.get('x-forwarded-for') ?? null } : {}) })
     } catch {
       res.status(503).json({ status: 'degraded', database: 'down' })
     }
