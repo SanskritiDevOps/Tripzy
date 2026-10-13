@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import clsx from 'clsx'
-import { Compass, Luggage, LogOut, Menu, RotateCcw, X, ChevronDown, Plus } from 'lucide-react'
+import { Compass, Luggage, LogOut, Menu, X, ChevronDown, Plus } from 'lucide-react'
 import { Logo } from './Logo'
 import { Avatar } from '../ui/Avatar'
 import { Button } from '../ui/Button'
 import { useAuthStore } from '../../store/useAuthStore'
 import { useCurrentUser } from '../../store/selectors'
-import { useTripzyStore } from '../../store/useTripzyStore'
 import { toast } from '../../store/useToastStore'
 
 const LINKS = [
@@ -21,7 +20,6 @@ export function Navbar({ transparent = false }) {
   // Profile comes from the API; the avatar colour from the local trip data.
   const user = sessionUser ? { ...sessionUser, color: localProfile?.color } : null
   const logout = useAuthStore((s) => s.logout)
-  const resetDemo = useTripzyStore((s) => s.resetDemo)
   const navigate = useNavigate()
   const location = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -65,12 +63,6 @@ export function Navbar({ transparent = false }) {
       toast.info('Logged out on this device.')
     }
     navigate('/')
-  }
-
-  function handleReset() {
-    resetDemo()
-    toast.success('Demo data restored.')
-    navigate('/trips')
   }
 
   const solid = !transparent || scrolled || mobileOpen
@@ -130,9 +122,6 @@ export function Navbar({ transparent = false }) {
                       <p className="truncate text-xs text-slate-500">{user.email}</p>
                     </div>
                     <div className="my-1 h-px bg-sand-100" />
-                    <MenuItem icon={RotateCcw} onClick={handleReset}>
-                      Reset demo data
-                    </MenuItem>
                     <MenuItem icon={LogOut} onClick={handleLogout}>
                       Log out
                     </MenuItem>
@@ -197,9 +186,6 @@ export function Navbar({ transparent = false }) {
               <>
                 <Button variant="accent" icon={Plus} to="/trips?new=1">
                   New trip
-                </Button>
-                <Button variant="secondary" icon={RotateCcw} onClick={handleReset}>
-                  Reset demo data
                 </Button>
                 <Button variant="ghost" icon={LogOut} onClick={handleLogout}>
                   Log out

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Check, Copy, Crown, Mail, RefreshCw, Send, UserMinus, UserPlus, X } from 'lucide-react'
+import { Check, Copy, Crown, Mail, Send, UserMinus, UserPlus, X } from 'lucide-react'
 import { Modal } from '../../components/ui/Modal'
 import { Button, IconButton } from '../../components/ui/Button'
 import { Input } from '../../components/ui/Field'
@@ -152,41 +152,6 @@ function EmailInvites({ trip }) {
   )
 }
 
-/** Leader on a bundled demo trip: the original local share link. */
-function LocalInviteLink({ trip }) {
-  const invites = useTripzyStore((s) => s.invites)
-  const createInvite = useTripzyStore((s) => s.createInvite)
-  const invite = invites
-    .filter((i) => i.tripId === trip.id && new Date(i.expiresAt) > new Date())
-    .sort((a, b) => b.expiresAt.localeCompare(a.expiresAt))[0]
-
-  if (!invite) {
-    return (
-      <Button icon={UserPlus} onClick={() => createInvite(trip.id)}>
-        Create invite link
-      </Button>
-    )
-  }
-  return (
-    <>
-      <CopyField value={`${window.location.origin}/join/${invite.token}`} />
-      <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
-        <span>Demo trip — this link only works in this browser. Expires {formatDate(invite.expiresAt.slice(0, 10), { day: 'numeric', month: 'short', year: 'numeric' })}</span>
-        <button
-          type="button"
-          onClick={() => {
-            createInvite(trip.id)
-            toast.success('New invite link created.')
-          }}
-          className="inline-flex shrink-0 items-center gap-1 font-semibold text-ocean-700 hover:underline"
-        >
-          <RefreshCw className="size-3" /> New link
-        </button>
-      </div>
-    </>
-  )
-}
-
 export function InviteModal({ open, onClose, trip, members, permissions, currentUserId }) {
   const removeMember = useTripzyStore((s) => s.removeMember)
   const [removing, setRemoving] = useState(null)
@@ -208,13 +173,17 @@ export function InviteModal({ open, onClose, trip, members, permissions, current
       <Modal
         open={open && !removing}
         onClose={onClose}
-        title={canInvite ? 'Invite your crew' : 'Trip members'}
-        description={canInvite ? (trip.remote ? 'Invite people by email. Each link works only for the address it was sent to.' : 'Anyone with the link can join until it expires.') : undefined}
+        title={canInvite && trip.remote ? 'Invite your crew' : 'Trip members'}
+        description={canInvite && trip.remote ? 'Invite people by email. Each link works only for the address it was sent to.' : undefined}
         icon={UserPlus}
       >
         <div className="space-y-6">
-          {canInvite ? (
-            <div>{trip.remote ? <EmailInvites trip={trip} /> : <LocalInviteLink trip={trip} />}</div>
+          {!trip.remote ? (
+            <p className="rounded-xl bg-violet-50 px-3.5 py-2.5 text-sm text-violet-900 ring-1 ring-violet-200">
+              This is an example trip, so it can’t be shared. Plan your own trip to invite friends by email.
+            </p>
+          ) : canInvite ? (
+            <EmailInvites trip={trip} />
           ) : (
             <p className="rounded-xl bg-sand-100 px-3.5 py-2.5 text-sm text-slate-600">Only the team leader can invite or remove people.</p>
           )}

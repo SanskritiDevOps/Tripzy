@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
-import { CalendarDays, Crown, MapPin } from 'lucide-react'
+import { CalendarDays, Crown, MapPin, Sparkles } from 'lucide-react'
 import { AvatarStack } from '../../components/ui/Avatar'
 import { Badge } from '../../components/ui/Badge'
 import { ProgressBar } from '../../components/ui/Card'
@@ -10,7 +10,8 @@ import { formatMoney } from '../../utils/money'
 
 const FALLBACK = { gradient: 'from-ocean-400 via-ocean-200 to-sand-200', emoji: '🧭' }
 
-export function TripCard({ trip, members, placeCount, spentMinor, isLeader }) {
+/** `example`: one of the bundled example trips (shown with an "Example" badge, no leader crown). */
+export function TripCard({ trip, members, placeCount, spentMinor, isLeader, example = false }) {
   const destination = DESTINATIONS.find((d) => d.id === trip.destinationId) ?? FALLBACK
   const status = tripStatus(trip.startDate, trip.endDate)
   const days = tripLength(trip.startDate, trip.endDate)
@@ -29,8 +30,13 @@ export function TripCard({ trip, members, placeCount, spentMinor, isLeader }) {
           <Badge tone={status.kind === 'upcoming' ? 'dark' : status.kind === 'ongoing' ? 'success' : 'neutral'} className="!ring-0">
             {countdownLabel(trip.startDate, trip.endDate)}
           </Badge>
+          {example && (
+            <Badge tone="neutral" icon={Sparkles} className="!bg-white/90 !text-violet-700 !ring-0">
+              Example
+            </Badge>
+          )}
         </div>
-        {isLeader && (
+        {isLeader && !example && (
           <span className="absolute top-3 right-3 grid size-7 place-items-center rounded-full bg-white/85 text-amber-600" title="You’re the team leader">
             <Crown className="size-3.5" aria-hidden />
           </span>

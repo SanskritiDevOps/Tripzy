@@ -611,16 +611,40 @@ export const useTripzyStore = create(
         resetPacking: (tripId) =>
           set((s) => ({ packingItems: s.packingItems.map((p) => (p.tripId === tripId ? { ...p, packed: false } : p)) })),
 
-        // ── Demo ───────────────────────────────────────────────────────
-        resetDemo: () => {
-          const { users, sessionUserId } = get()
-          const me = users.find((u) => u.id === sessionUserId)
-          set({
-            ...createSeedData(me ? { id: me.id, name: me.name, email: me.email, avatarUrl: me.avatarUrl } : undefined),
-            currentUserId: sessionUserId,
-            sessionUserId,
-          })
-        },
+        // ── Example trips ──────────────────────────────────────────────
+        // The bundled trips (Jaipur, Kyoto, Goa) are examples of a fully planned trip.
+        // They live only in this browser; saved trips live on the server.
+
+        /** Restores the example trips to their original state. Saved (server) trips are untouched. */
+        resetExamples: () =>
+          set((s) => {
+            const me = s.users.find((u) => u.id === s.sessionUserId)
+            const seed = createSeedData(me ? { id: me.id, name: me.name, email: me.email, avatarUrl: me.avatarUrl } : undefined)
+            const saved = new Set(s.trips.filter((t) => t.remote).map((t) => t.id))
+            const keep = (row) => saved.has(row.tripId)
+            const savedDayIds = new Set(s.itineraryDays.filter(keep).map((d) => d.id))
+            const savedPlaceIds = new Set(s.places.filter(keep).map((pl) => pl.id))
+            const seedUserIds = new Set(seed.users.map((u) => u.id))
+            return {
+              users: [...seed.users, ...s.users.filter((u) => !seedUserIds.has(u.id))],
+              trips: [...s.trips.filter((t) => t.remote), ...seed.trips],
+              members: [...s.members.filter(keep), ...seed.members],
+              invites: [...s.invites.filter(keep), ...seed.invites],
+              places: [...s.places.filter(keep), ...seed.places],
+              votes: [...s.votes.filter((v) => savedPlaceIds.has(v.placeId)), ...seed.votes],
+              itineraryDays: [...s.itineraryDays.filter(keep), ...seed.itineraryDays],
+              itineraryItems: [...s.itineraryItems.filter((i) => savedDayIds.has(i.dayId)), ...seed.itineraryItems],
+              expenses: [...s.expenses.filter(keep), ...seed.expenses],
+              settlements: [...s.settlements.filter(keep), ...seed.settlements],
+              packingItems: [...s.packingItems.filter(keep), ...seed.packingItems],
+              activity: [...s.activity.filter(keep), ...seed.activity],
+              presence: { ...Object.fromEntries(Object.entries(s.presence).filter(([tripId]) => saved.has(tripId))), ...seed.presence },
+            }
+          }),
+
+        /** "Hide examples" on My trips (remembered on this device). */
+        examplesHidden: false,
+        setExamplesHidden: (hidden) => set({ examplesHidden: hidden }),
       }
     },
     {

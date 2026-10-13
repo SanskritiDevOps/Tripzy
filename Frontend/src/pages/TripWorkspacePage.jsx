@@ -11,8 +11,11 @@ import {
   LogOut,
   MapPin,
   MapPinned,
+  Plus,
   Settings2,
+  RotateCcw,
   ShieldAlert,
+  Sparkles,
   Trash2,
   UserPlus,
   Users,
@@ -75,6 +78,7 @@ export function TripWorkspacePage() {
   const usersById = useUsersById()
   const currentUserId = useTripzyStore((s) => s.currentUserId)
   const deleteTrip = useTripzyStore((s) => s.deleteTrip)
+  const resetExamples = useTripzyStore((s) => s.resetExamples)
   const removeMember = useTripzyStore((s) => s.removeMember)
   const { syncing } = useRemoteTripsSync()
   const { loading: loadingTripData } = useRemoteTripData(trip)
@@ -162,8 +166,9 @@ export function TripWorkspacePage() {
               <Button variant="secondary" size="sm" icon={Activity} onClick={() => setDialog('activity')} className="hidden sm:inline-flex">
                 Activity
               </Button>
-              <Button size="sm" icon={permissions.canInvite ? UserPlus : Users} onClick={() => setDialog('invite')}>
-                {permissions.canInvite ? 'Invite' : 'Members'}
+              {/* Example trips live only in this browser, so they can't be shared. */}
+              <Button size="sm" icon={permissions.canInvite && trip.remote ? UserPlus : Users} onClick={() => setDialog('invite')}>
+                {permissions.canInvite && trip.remote ? 'Invite' : 'Members'}
               </Button>
               <Menu
                 label="Trip options"
@@ -176,6 +181,32 @@ export function TripWorkspacePage() {
               />
             </div>
           </div>
+
+          {!trip.remote && (
+            <div className="mt-5 flex flex-col gap-3 rounded-2xl bg-violet-50 px-4 py-3 ring-1 ring-violet-200 sm:flex-row sm:items-center" role="note">
+              <Sparkles className="hidden size-5 shrink-0 text-violet-600 sm:block" aria-hidden />
+              <p className="min-w-0 flex-1 text-sm text-violet-900">
+                <span className="font-semibold">This is an example trip</span>, showing what a fully planned trip looks like. Explore and try anything: changes
+                stay on this device and aren’t shared with anyone.
+              </p>
+              <div className="flex shrink-0 gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={RotateCcw}
+                  onClick={() => {
+                    resetExamples()
+                    toast.success('Example reset to its original state.')
+                  }}
+                >
+                  Reset
+                </Button>
+                <Button size="sm" icon={Plus} to="/trips?new=1">
+                  Plan your own trip
+                </Button>
+              </div>
+            </div>
+          )}
 
           <div className="mt-5">
             <TripSummaryBar trip={trip} members={members} spentMinor={spentMinor} itinerary={itinerary} placesById={placesById} permissions={permissions} />
