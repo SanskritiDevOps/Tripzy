@@ -19,6 +19,8 @@ const schema = z.object({
   GOOGLE_CLIENT_ID: z.string().trim().optional().transform((v) => v || undefined),
   // Invite emails. Without SMTP_URL, emails are written to the log (dev mode).
   SMTP_URL: z.string().trim().optional().transform((v) => v || undefined),
+  // Email via Brevo's HTTPS API (free 300/day). Use this on free hosting, which blocks SMTP.
+  BREVO_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
   MAIL_FROM: z.string().default('Tripzy <no-reply@tripzy.app>'),
   // Public URL of the frontend, used in invite links. Defaults to the first CLIENT_URL.
   APP_URL: z.string().url().optional(),

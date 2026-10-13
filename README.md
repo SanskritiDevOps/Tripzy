@@ -757,6 +757,7 @@ COOKIE_SAMESITE=lax             # "none" when frontend and API are on different 
 TRUST_PROXY=0                   # 1 behind Render/Railway so rate limits see real IPs
 GOOGLE_CLIENT_ID=               # optional: enables "Continue with Google" (see below)
 SMTP_URL=                       # optional: e.g. smtps://user:pass@smtp.example.com:465; empty = invite emails are logged
+BREVO_API_KEY=                  # optional: send via Brevo's HTTPS API instead (needed on free hosts, which block SMTP)
 MAIL_FROM=Tripzy <no-reply@tripzy.app>
 APP_URL=http://localhost:5173   # used in invite links (defaults to the first CLIENT_URL)
 
@@ -837,6 +838,8 @@ Test the logic that would hurt most if wrong. Don't chase 100% coverage.
 ---
 
 ## 17. Deployment
+
+**Step-by-step free deployment (Neon + Render + Vercel + Brevo): see [DEPLOYMENT.md](DEPLOYMENT.md).** The repo includes `render.yaml` (backend) and `Frontend/vercel.json` (frontend routing and the `/api` proxy).
 
 | Piece | Suggested host |
 |---|---|

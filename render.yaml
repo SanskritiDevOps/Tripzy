@@ -1,0 +1,45 @@
+# Render Blueprint for the Tripzy API (Backend/). See DEPLOYMENT.md.
+# Render → New → Blueprint → pick this repo. Values marked `sync: false` are
+# asked for once in the Render dashboard and never stored in git.
+services:
+  - type: web
+    name: tripzy-api
+    runtime: node
+    plan: free
+    rootDir: Backend
+    # --include=dev: the Prisma CLI (a dev dependency) is needed to generate the
+    # client and apply migrations during the build, even with NODE_ENV=production.
+    buildCommand: npm ci --include=dev && npm run db:deploy
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # Requests reach the API through two proxies: Vercel (the /api rewrite) and
+      # Render's load balancer. Verify with https://<your-site>/api/health → yourIp.
+      - key: TRUST_PROXY
+        value: "2"
+      - key: COOKIE_SAMESITE
+        value: lax
+      - key: JWT_ACCESS_SECRET
+        generateValue: true
+      - key: DATABASE_URL
+        sync: false
+      # Your Vercel URL, e.g. https://tripzy.vercel.app (no trailing slash)
+      - key: CLIENT_URL
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEOCODER_EMAIL
+        sync: false

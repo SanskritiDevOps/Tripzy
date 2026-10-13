@@ -126,3 +126,18 @@ describe('GET /api/trips card stats', () => {
     expect(again.body.trips.find((x) => x.id === empty.body.trip.id).stats).toEqual({ placeCount: 0, spentMinor: 0 })
   })
 })
+
+describe('health and caching', () => {
+  it('serves /health and /api/health (the latter shows the client IP for proxy checks)', async () => {
+    const plain = await request(app).get('/health').expect(200)
+    expect(plain.body).toEqual({ status: 'ok', database: 'up' })
+    const viaApi = await request(app).get('/api/health').set('X-Forwarded-For', '203.0.113.9').expect(200)
+    expect(viaApi.body).toMatchObject({ status: 'ok', database: 'up', yourIp: expect.any(String) })
+  })
+
+  it('marks API responses as never cacheable by proxies', async () => {
+    const { token } = await signUp()
+    const res = await request(app).get('/api/trips').set(auth(token)).expect(200)
+    expect(res.headers['cache-control']).toBe('no-store')
+  })
+})
