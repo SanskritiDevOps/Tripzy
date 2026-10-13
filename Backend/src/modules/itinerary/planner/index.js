@@ -241,7 +241,7 @@ export async function generatePlan(tripId, input, log = logger) {
     return { engine: 'gemini', model: env.GEMINI_MODEL, attempts, notice: warnings[0] ?? null, ...present(context, plan, settings, input) }
   } catch (error) {
     if (!(error instanceof AiError)) throw error
-    log.warn({ code: error.code, message: error.message }, 'AI itinerary failed — using code-only plan')
+    log.warn({ code: error.code, message: error.message, detail: error.detail }, 'AI itinerary failed — using code-only plan')
     return { engine: 'code', model: null, notice: `${error.message} Showing the route-based plan instead.`, fallbackCode: error.code, ...present(context, code, settings, input) }
   }
 }

@@ -283,3 +283,33 @@ describe('POST /itinerary/plan (save a draft)', () => {
     await request(app).post(`/api/trips/${ctx.trip.id}/itinerary/plan`).set(auth(ctx.member.token)).send({ items: [item, { ...item, startTime: '12:00' }] }).expect(400)
   })
 })
+
+describe('Gemini overload handling', () => {
+  it('retries once when Gemini is briefly overloaded (503), then uses its plan', async () => {
+    const ctx = await setup()
+    env.GEMINI_API_KEY = 'test-key'
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url, init) => {
+        calls += 1
+        if (calls === 1) return new Response(JSON.stringify({ error: { status: 'UNAVAILABLE', message: 'This model is currently experiencing high demand.' } }), { status: 503 })
+        const refs = refsFrom({ body: JSON.parse(init.body) })
+        const answer = { days: [{ dayNumber: 1, items: [{ placeRef: refs['Hawa Mahal'], startTime: '09:00', tip: 'Go early.' }] }], unplaced: [] }
+        return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(answer) }] } }] }), { status: 200 })
+      }),
+    )
+    const res = await generate(ctx, ctx.member, { dayIds: [ctx.days[0].id], places: [{ placeId: ctx.byName['Hawa Mahal'].id, durationMinutes: 60 }] }).expect(200)
+    expect(res.body.engine).toBe('gemini')
+    expect(calls).toBe(2)
+  })
+
+  it('falls back to the route-based plan when Gemini stays overloaded', async () => {
+    const ctx = await setup()
+    env.GEMINI_API_KEY = 'test-key'
+    const calls = mockGemini(503, 503)
+    const res = await generate(ctx, ctx.member, { dayIds: [ctx.days[0].id], places: [{ placeId: ctx.byName['Hawa Mahal'].id, durationMinutes: 60 }] }).expect(200)
+    expect(res.body).toMatchObject({ engine: 'code', fallbackCode: 'AI_UNAVAILABLE' })
+    expect(calls).toHaveLength(2)
+  })
+})

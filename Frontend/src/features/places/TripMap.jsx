@@ -26,13 +26,15 @@ function FitBounds({ points, padding = 40 }) {
   const key = points.map((p) => `${p.lat.toFixed(4)},${p.lng.toFixed(4)}`).join('|')
   useEffect(() => {
     if (points.length === 0) return
+    // No animation: live updates can move the map while the user switches tabs, and
+    // Leaflet throws (_leaflet_pos) if the map is removed mid-animation.
     if (points.length === 1) {
-      map.setView([points[0].lat, points[0].lng], 14, { animate: true })
+      map.setView([points[0].lat, points[0].lng], 14, { animate: false })
       return
     }
     map.fitBounds(
       points.map((p) => [p.lat, p.lng]),
-      { padding: [padding, padding], maxZoom: 15, animate: true },
+      { padding: [padding, padding], maxZoom: 15, animate: false },
     )
     // eslint-disable-next-line react-hooks/exhaustive-deps -- refit only when the set of coordinates changes
   }, [map, key, padding])

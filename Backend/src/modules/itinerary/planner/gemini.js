@@ -4,12 +4,16 @@
 import { env } from '../../../config/env.js'
 
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
+const OVERLOADED = new Set([500, 503])
+const OVERLOAD_RETRY_MS = 2000
 
 export class AiError extends Error {
-  constructor(code, message) {
+  /** `detail`: what Gemini itself said (status + message), for the server log only. */
+  constructor(code, message, detail) {
     super(message)
     this.name = 'AiError'
     this.code = code
+    this.detail = detail
   }
 }
 
@@ -17,11 +21,12 @@ export const isAiConfigured = () => Boolean(env.GEMINI_API_KEY)
 
 function describeHttpError(status, body) {
   const detail = body?.error?.message ?? ''
-  if (status === 429) return new AiError('AI_RATE_LIMITED', 'Gemini’s usage limit was reached. Try again in a minute.')
-  if (status === 401 || status === 403 || /api key/i.test(detail)) return new AiError('AI_AUTH', 'Gemini rejected the API key. Check GEMINI_API_KEY in Backend/.env.')
-  if (status === 404) return new AiError('AI_MODEL', `Gemini model “${env.GEMINI_MODEL}” isn’t available. Check GEMINI_MODEL in Backend/.env.`)
-  if (status >= 500) return new AiError('AI_UNAVAILABLE', 'Gemini is temporarily unavailable.')
-  return new AiError('AI_REQUEST', `Gemini couldn’t process the request (${status}).`)
+  const logDetail = `HTTP ${status}${body?.error?.status ? ` ${body.error.status}` : ''}: ${detail.slice(0, 300) || 'no message'}`
+  if (status === 429) return new AiError('AI_RATE_LIMITED', 'Gemini’s usage limit was reached. Try again in a minute.', logDetail)
+  if (status === 401 || status === 403 || /api key/i.test(detail)) return new AiError('AI_AUTH', 'Gemini rejected the API key. Check GEMINI_API_KEY in Backend/.env.', logDetail)
+  if (status === 404) return new AiError('AI_MODEL', `Gemini model “${env.GEMINI_MODEL}” isn’t available. Check GEMINI_MODEL in Backend/.env.`, logDetail)
+  if (status >= 500) return new AiError('AI_UNAVAILABLE', 'Gemini is temporarily unavailable.', logDetail)
+  return new AiError('AI_REQUEST', `Gemini couldn’t process the request (${status}).`, logDetail)
 }
 
 /**
@@ -33,9 +38,8 @@ function describeHttpError(status, body) {
 export async function generateJson({ system, contents, schema, timeoutMs = env.AI_TIMEOUT_MS }) {
   if (!isAiConfigured()) throw new AiError('AI_DISABLED', 'AI planning isn’t set up on this server.')
 
-  let response
-  try {
-    response = await fetch(`${BASE_URL}/models/${encodeURIComponent(env.GEMINI_MODEL)}:generateContent`, {
+  const request = () =>
+    fetch(`${BASE_URL}/models/${encodeURIComponent(env.GEMINI_MODEL)}:generateContent`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
       body: JSON.stringify({
@@ -45,9 +49,18 @@ export async function generateJson({ system, contents, schema, timeoutMs = env.A
       }),
       signal: AbortSignal.timeout(timeoutMs),
     })
+
+  let response
+  try {
+    response = await request()
+    // "Model overloaded" spikes (500/503) are usually brief: one retry after a short pause.
+    if (OVERLOADED.has(response.status)) {
+      await new Promise((resolve) => setTimeout(resolve, OVERLOAD_RETRY_MS))
+      response = await request()
+    }
   } catch (error) {
     if (error.name === 'TimeoutError' || error.name === 'AbortError') throw new AiError('AI_TIMEOUT', 'Gemini took too long to answer.')
-    throw new AiError('AI_UNAVAILABLE', 'Couldn’t reach Gemini.')
+    throw new AiError('AI_UNAVAILABLE', 'Couldn’t reach Gemini.', `${error.name}: ${error.message}`)
   }
 
   const body = await response.json().catch(() => null)
