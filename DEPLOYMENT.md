@@ -7,9 +7,9 @@ This guide puts Tripzy online using only free plans. Follow the steps in order: 
 | Database (PostgreSQL) | **Neon** | Free forever, no expiry (Render's free database is deleted after 30 days) |
 | Backend (Express + Socket.IO) | **Render** | Runs long-lived WebSocket connections for the Live updates |
 | Frontend (React) | **Vercel** | Fast static hosting; also forwards `/api` to the backend so logins keep working in Safari |
-| Invite emails | **Brevo** | Free hosts block normal email (SMTP), so emails go through Brevo's web API instead |
+| Invite emails | **Your Gmail, via a small Vercel Function** | Render's free plan blocks email ports; Vercel allows them. The backend hands emails to `/api/mail-relay` on Vercel over HTTPS, which sends them with Gmail. No extra account needed. |
 
-Already configured in the repo: `render.yaml` (backend settings), `Frontend/vercel.json` (frontend routing) and the Brevo email support.
+Already configured in the repo: `render.yaml` (backend settings), `Frontend/vercel.json` (frontend routing) and the mail relay (`Frontend/api/mail-relay.js`).
 
 You'll need about 45 minutes and a GitHub account that has the Tripzy repo.
 
@@ -45,7 +45,26 @@ Render and Vercel deploy from GitHub, so they only see what you've pushed.
 
 ---
 
-## Step 2. Email on Brevo
+## Step 2. Email: get a Gmail app password and a relay secret
+
+Invite emails are sent from your Gmail through a small function on Vercel (the "mail relay"). You need two things:
+
+1. **A Gmail app password.** Google Account → **Security** → turn on **2-Step Verification** → search **App passwords** → create one named `Tripzy` → copy the 16 characters. Your **`SMTP_URL`** is then (with `@` written as `%40`, spaces removed):
+   ```
+   smtps://yourname%40gmail.com:abcdefghijklmnop@smtp.gmail.com:465
+   ```
+   If you already set this up for local development, reuse the `SMTP_URL` from `Backend/.env`.
+2. **A relay secret**: a long random password shared by Render and Vercel, so only your backend can use the relay. Generate one in a terminal:
+   ```bash
+   node -e "console.log(require('crypto').randomBytes(36).toString('base64url'))"
+   ```
+   This is your **`MAIL_RELAY_SECRET`**.
+
+Keep both private. You'll paste them in Steps 3–5.
+
+### Alternative: Brevo
+
+If you'd rather use an email service, Brevo works too (it takes priority when `BREVO_API_KEY` is set):
 
 1. Sign up at **https://www.brevo.com** (free plan: 300 emails a day).
 2. Verify the address emails will come from: **Settings → Senders, Domains & Dedicated IPs → Senders → Add a sender**. Use your Gmail address, then click the confirmation link Brevo emails you.
@@ -68,15 +87,17 @@ Your **`MAIL_FROM`** will be `Tripzy <your-verified-gmail@gmail.com>`.
    | `DATABASE_URL` | the Neon connection string from Step 1 |
    | `CLIENT_URL` | for now `https://tripzy.vercel.app` (you'll correct it in Step 5) |
    | `APP_URL` | same as `CLIENT_URL` |
-   | `MAIL_FROM` | `Tripzy <your-verified-gmail@gmail.com>` |
-   | `BREVO_API_KEY` | from Step 2 |
+   | `MAIL_FROM` | `Tripzy <your-gmail@gmail.com>` |
+   | `MAIL_RELAY_SECRET` | the relay secret from Step 2 |
+   | `MAIL_RELAY_URL` | leave empty for now (set in Step 5) |
+   | `BREVO_API_KEY` | leave empty (only if you use Brevo) |
    | `GOOGLE_CLIENT_ID` | the same value as in your local `Backend/.env` |
    | `GEMINI_API_KEY` | the same value as in your local `Backend/.env` |
    | `GEOCODER_EMAIL` | your email (OpenStreetMap asks for a contact address; optional) |
 
    `JWT_ACCESS_SECRET` is generated automatically, so leave it. Don't copy your local one.
 
-   Don't add `SMTP_URL` on Render. SMTP is blocked on the free plan; Brevo replaces it.
+   Don't add `SMTP_URL` on Render. SMTP is blocked on the free plan; the mail relay on Vercel uses it instead.
 
 4. Click **Apply**. The first build takes 3–5 minutes. It installs packages, sets up the database tables in Neon and starts the server.
 5. When the service shows **Live**, note its URL at the top, e.g. **`https://tripzy-api.onrender.com`**.
@@ -112,6 +133,9 @@ If the build fails, open **Logs**: the last red lines say why. Common causes are
      |---|---|
      | `VITE_API_URL` | `/api` |
      | `VITE_SOCKET_URL` | `https://tripzy-api.onrender.com` (your Render URL, no trailing slash) |
+     | `SMTP_URL` | your Gmail `SMTP_URL` from Step 2 (used only by the mail relay, never sent to browsers) |
+     | `MAIL_FROM` | `Tripzy <your-gmail@gmail.com>` |
+     | `MAIL_RELAY_SECRET` | the same relay secret you put on Render |
 
 5. Click **Deploy**. After about a minute you get a URL like **`https://tripzy-abc123.vercel.app`**.
    - **Optional:** in **Settings → Domains** you can rename it, e.g. to `tripzy-sanskriti.vercel.app`, if that name is free.
@@ -125,6 +149,7 @@ If the build fails, open **Logs**: the last red lines say why. Common causes are
 1. **Tell the backend the frontend's real address.** In Render, open **tripzy-api → Environment**:
    - set `CLIENT_URL` to your exact Vercel URL, e.g. `https://tripzy-abc123.vercel.app` (no trailing slash)
    - set `APP_URL` to the same value
+   - set `MAIL_RELAY_URL` to `https://<your-vercel-url>/api/mail-relay`
    - **Save changes**. Render redeploys automatically, which takes a couple of minutes.
 2. **Allow Google sign-in on the new address.** In **Google Cloud Console → APIs & Services → Credentials**, open your OAuth client. Under **Authorized JavaScript origins**, add your Vercel URL and save. It can take a few minutes to start working.
 
@@ -181,7 +206,7 @@ git push
 | Reloading `/trips/...` gives a 404 | Vercel's **Root Directory** isn't `Frontend`, so `vercel.json` isn't used. |
 | Live badge stays "Reconnecting…" | `VITE_SOCKET_URL` is wrong, or the backend is still waking up (wait a minute). |
 | "Continue with Google" missing or `origin_mismatch` | `GOOGLE_CLIENT_ID` isn't set on Render, or the Vercel URL isn't in Authorized JavaScript origins. |
-| Invites show a link but no email arrives | Check `BREVO_API_KEY`, that the `MAIL_FROM` address is a verified sender in Brevo, and the Render logs for "Failed to send email". |
+| Invites show a link but no email arrives | Render logs → "Failed to send email" shows the reason. `Mail relay responded 401`: `MAIL_RELAY_SECRET` differs between Render and Vercel. `503`: `SMTP_URL`/`MAIL_RELAY_SECRET` missing on Vercel (redeploy after adding them). `502`: Gmail refused; check the app password in `SMTP_URL` (Vercel → Logs shows details). |
 | AI planner always says "route-based plan" | `GEMINI_API_KEY` isn't set on Render, or the daily free quota was reached. |
 
 ---

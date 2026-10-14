@@ -18,4 +18,9 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  {
+    // Vercel Functions (server-side Node.js), e.g. the mail relay.
+    files: ['api/**/*.js'],
+    languageOptions: { globals: globals.node },
+  },
 ])

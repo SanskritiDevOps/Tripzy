@@ -68,3 +68,36 @@ describe('mailer', () => {
     expect(calls[0].body.textContent).toContain('/join-trip?token=')
   })
 })
+
+describe('mailer via the Vercel mail relay', () => {
+  afterEach(() => {
+    env.MAIL_RELAY_URL = undefined
+    env.MAIL_RELAY_SECRET = undefined
+  })
+
+  it('posts the email to the relay with the shared secret', async () => {
+    env.MAIL_RELAY_URL = 'https://tripzy.example/api/mail-relay'
+    env.MAIL_RELAY_SECRET = 'r'.repeat(48)
+    const calls = stubBrevo(200, { delivered: true })
+    expect(await sendMail({ to: 'friend@example.com', subject: 'Join', text: 'Link', html: '<p>Link</p>' })).toEqual({ delivered: true })
+    expect(calls[0].url).toBe('https://tripzy.example/api/mail-relay')
+    expect(calls[0].headers['X-Relay-Secret']).toBe('r'.repeat(48))
+    expect(calls[0].body).toEqual({ to: 'friend@example.com', subject: 'Join', text: 'Link', html: '<p>Link</p>' })
+  })
+
+  it('reports not delivered (never throws) when the relay refuses', async () => {
+    env.MAIL_RELAY_URL = 'https://tripzy.example/api/mail-relay'
+    env.MAIL_RELAY_SECRET = 'wrong'
+    stubBrevo(401, { message: 'Unauthorized' })
+    expect(await sendMail({ to: 'friend@example.com', subject: 'x', text: 'y' })).toEqual({ delivered: false })
+  })
+
+  it('Brevo wins when both are configured', async () => {
+    env.BREVO_API_KEY = 'brevo-key'
+    env.MAIL_RELAY_URL = 'https://tripzy.example/api/mail-relay'
+    env.MAIL_RELAY_SECRET = 'r'.repeat(48)
+    const calls = stubBrevo()
+    await sendMail({ to: 'friend@example.com', subject: 'x', text: 'y' })
+    expect(calls[0].url).toBe('https://api.brevo.com/v3/smtp/email')
+  })
+})
