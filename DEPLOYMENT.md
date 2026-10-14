@@ -1,219 +1,75 @@
-# Deploying Tripzy for free
+# Deploying Tripzy (free)
 
-This guide puts Tripzy online using only free plans. Follow the steps in order: some steps need a value (a URL or key) that an earlier step gives you.
-
-| Piece | Host (free plan) | Why this one |
+| Part | Host | Config in repo |
 |---|---|---|
-| Database (PostgreSQL) | **Neon** | Free forever, no expiry (Render's free database is deleted after 30 days) |
-| Backend (Express + Socket.IO) | **Render** | Runs long-lived WebSocket connections for the Live updates |
-| Frontend (React) | **Vercel** | Fast static hosting; also forwards `/api` to the backend so logins keep working in Safari |
-| Invite emails | **Your Gmail, via a small Vercel Function** | Render's free plan blocks email ports; Vercel allows them. The backend hands emails to `/api/mail-relay` on Vercel over HTTPS, which sends them with Gmail. No extra account needed. |
+| Database | [Neon](https://neon.tech) (PostgreSQL) | — |
+| API | [Render](https://render.com) | `render.yaml` |
+| Web app + mail relay | [Vercel](https://vercel.com) | `Frontend/vercel.json`, `Frontend/api/mail-relay.js` |
 
-Already configured in the repo: `render.yaml` (backend settings), `Frontend/vercel.json` (frontend routing) and the mail relay (`Frontend/api/mail-relay.js`).
+Render's free plan blocks email ports, so the API sends invite emails through a small Vercel Function that uses Gmail.
 
-You'll need about 45 minutes and a GitHub account that has the Tripzy repo.
+## Steps (in this order)
 
----
+1. **Neon:** create a project (Singapore region, to match `render.yaml`) → **Connect** → turn **off** connection pooling → copy the connection string.
+2. **Secrets:**
+   - Create a Gmail **app password** (Google Account → Security → 2-Step Verification → App passwords).
+   - Generate a relay secret: `node -e "console.log(require('crypto').randomBytes(36).toString('base64url'))"`
+3. **Render:** New → **Blueprint** → choose this repo → fill in the settings below → Apply. Check that `https://<api>.onrender.com/health` shows `"database":"up"`.
+4. **Vercel:**
+   - Put your Render URL into `Frontend/vercel.json` and push.
+   - New Project → **Root Directory `Frontend`** → add the settings below → Deploy.
+5. **Connect them:**
+   - In Render, set `CLIENT_URL`, `APP_URL` and `MAIL_RELAY_URL` to your Vercel address.
+   - Add the Vercel address to your Google OAuth client's **Authorized JavaScript origins**.
 
-## Step 0. Push the latest code
+## Settings
 
-```bash
-git add -A
-git commit -m "Deployment config"
-git push
-```
+**Render (API)**
 
-Render and Vercel deploy from GitHub, so they only see what you've pushed.
+| Key | Value |
+|---|---|
+| `DATABASE_URL` | Neon connection string (direct, ends with `?sslmode=require`) |
+| `CLIENT_URL`, `APP_URL` | `https://<your-site>.vercel.app` (no trailing slash) |
+| `MAIL_FROM` | `Tripzy <you@gmail.com>` |
+| `MAIL_RELAY_URL` | `https://<your-site>.vercel.app/api/mail-relay` |
+| `MAIL_RELAY_SECRET` | the relay secret (same value as on Vercel) |
+| `GOOGLE_CLIENT_ID`, `GEMINI_API_KEY` | optional: Google sign-in and AI planning |
+| `GEOCODER_EMAIL` | optional: contact email for OpenStreetMap |
 
----
+`JWT_ACCESS_SECRET`, `NODE_ENV` and `TRUST_PROXY` come from `render.yaml`. Change them in `render.yaml`, not only in the dashboard, because Blueprint syncs overwrite dashboard edits.
 
-## Step 1. Database on Neon
+**Vercel (web app)**
 
-1. Sign up at **https://neon.tech** (use "Continue with GitHub").
-2. Create a project:
-   - **Name:** `tripzy`
-   - **Postgres version:** the default (16 or newer)
-   - **Region:** the one closest to your users. From India, pick **AWS Asia Pacific (Singapore)**.
-3. On the project dashboard, click **Connect**. Turn **off** "Connection pooling", so you get the *direct* connection (database migrations need it).
-4. Copy the connection string. It looks like:
-   ```
-   postgresql://neondb_owner:xxxxxxxx@ep-cool-name-123456.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
-   ```
-   This is your **`DATABASE_URL`**. Keep it secret: it gives full access to your data.
+| Key | Value |
+|---|---|
+| `VITE_API_URL` | `/api` |
+| `VITE_SOCKET_URL` | `https://<api>.onrender.com` |
+| `SMTP_URL` | `smtps://you%40gmail.com:<app-password>@smtp.gmail.com:465` |
+| `MAIL_FROM` | `Tripzy <you@gmail.com>` |
+| `MAIL_RELAY_SECRET` | the same relay secret as on Render |
 
-> Don't run `npm run db:seed` against this database. It creates a demo account whose password is published in the README.
+After changing a Vercel setting, **redeploy**: `VITE_` values are built into the app.
 
----
+## Check it works
 
-## Step 2. Email: get a Gmail app password and a relay secret
-
-Invite emails are sent from your Gmail through a small function on Vercel (the "mail relay"). You need two things:
-
-1. **A Gmail app password.** Google Account → **Security** → turn on **2-Step Verification** → search **App passwords** → create one named `Tripzy` → copy the 16 characters. Your **`SMTP_URL`** is then (with `@` written as `%40`, spaces removed):
-   ```
-   smtps://yourname%40gmail.com:abcdefghijklmnop@smtp.gmail.com:465
-   ```
-   If you already set this up for local development, reuse the `SMTP_URL` from `Backend/.env`.
-2. **A relay secret**: a long random password shared by Render and Vercel, so only your backend can use the relay. Generate one in a terminal:
-   ```bash
-   node -e "console.log(require('crypto').randomBytes(36).toString('base64url'))"
-   ```
-   This is your **`MAIL_RELAY_SECRET`**.
-
-Keep both private. You'll paste them in Steps 3–5.
-
-### Alternative: Brevo
-
-If you'd rather use an email service, Brevo works too (it takes priority when `BREVO_API_KEY` is set):
-
-1. Sign up at **https://www.brevo.com** (free plan: 300 emails a day).
-2. Verify the address emails will come from: **Settings → Senders, Domains & Dedicated IPs → Senders → Add a sender**. Use your Gmail address, then click the confirmation link Brevo emails you.
-3. Create an API key: **Settings → SMTP & API → API keys → Generate a new API key**. Name it `tripzy`. Copy it now; Brevo shows it only once. This is your **`BREVO_API_KEY`**.
-
-Your **`MAIL_FROM`** will be `Tripzy <your-verified-gmail@gmail.com>`.
-
-> Because you don't own the `gmail.com` domain, Brevo may show the sender as an `@brevosend.com` address. Emails are still delivered. If they land in spam, ask friends to mark them "Not spam". Buying your own domain later and verifying it in Brevo removes this.
-
----
-
-## Step 3. Backend on Render
-
-1. Sign up at **https://render.com** with GitHub.
-2. Click **New → Blueprint**, pick your Tripzy repository and click **Connect**. Render reads `render.yaml` and proposes a web service called **`tripzy-api`**.
-3. Render asks for the values marked secret. Fill them in:
-
-   | Key | Value |
-   |---|---|
-   | `DATABASE_URL` | the Neon connection string from Step 1 |
-   | `CLIENT_URL` | for now `https://tripzy.vercel.app` (you'll correct it in Step 5) |
-   | `APP_URL` | same as `CLIENT_URL` |
-   | `MAIL_FROM` | `Tripzy <your-gmail@gmail.com>` |
-   | `MAIL_RELAY_SECRET` | the relay secret from Step 2 |
-   | `MAIL_RELAY_URL` | leave empty for now (set in Step 5) |
-   | `BREVO_API_KEY` | leave empty (only if you use Brevo) |
-   | `GOOGLE_CLIENT_ID` | the same value as in your local `Backend/.env` |
-   | `GEMINI_API_KEY` | the same value as in your local `Backend/.env` |
-   | `GEOCODER_EMAIL` | your email (OpenStreetMap asks for a contact address; optional) |
-
-   `JWT_ACCESS_SECRET` is generated automatically, so leave it. Don't copy your local one.
-
-   Don't add `SMTP_URL` on Render. SMTP is blocked on the free plan; the mail relay on Vercel uses it instead.
-
-4. Click **Apply**. The first build takes 3–5 minutes. It installs packages, sets up the database tables in Neon and starts the server.
-5. When the service shows **Live**, note its URL at the top, e.g. **`https://tripzy-api.onrender.com`**.
-6. Open `https://tripzy-api.onrender.com/health` in your browser. You should see:
-   ```json
-   {"status":"ok","database":"up"}
-   ```
-
-If the build fails, open **Logs**: the last red lines say why. Common causes are listed in the Troubleshooting section below.
-
----
-
-## Step 4. Frontend on Vercel
-
-1. **Point the frontend at your backend.** In `Frontend/vercel.json`, replace `YOUR-RENDER-SERVICE` with your service name from Step 3:
-   ```json
-   { "source": "/api/:path*", "destination": "https://tripzy-api.onrender.com/api/:path*" },
-   ```
-   Commit and push:
-   ```bash
-   git add Frontend/vercel.json
-   git commit -m "Point frontend at the deployed API"
-   git push
-   ```
-2. Sign up at **https://vercel.com** with GitHub.
-3. Click **Add New → Project** and import the Tripzy repository.
-4. Configure the project:
-   - **Root Directory:** click **Edit** and choose **`Frontend`**
-   - **Framework Preset:** Vite (detected automatically)
-   - **Environment Variables:**
-
-     | Key | Value |
-     |---|---|
-     | `VITE_API_URL` | `/api` |
-     | `VITE_SOCKET_URL` | `https://tripzy-api.onrender.com` (your Render URL, no trailing slash) |
-     | `SMTP_URL` | your Gmail `SMTP_URL` from Step 2 (used only by the mail relay, never sent to browsers) |
-     | `MAIL_FROM` | `Tripzy <your-gmail@gmail.com>` |
-     | `MAIL_RELAY_SECRET` | the same relay secret you put on Render |
-
-5. Click **Deploy**. After about a minute you get a URL like **`https://tripzy-abc123.vercel.app`**.
-   - **Optional:** in **Settings → Domains** you can rename it, e.g. to `tripzy-sanskriti.vercel.app`, if that name is free.
-
-> `VITE_API_URL` must stay `/api`. Requests then go through Vercel's proxy, so the login cookie counts as first-party and Safari doesn't log people out.
-
----
-
-## Step 5. Connect everything
-
-1. **Tell the backend the frontend's real address.** In Render, open **tripzy-api → Environment**:
-   - set `CLIENT_URL` to your exact Vercel URL, e.g. `https://tripzy-abc123.vercel.app` (no trailing slash)
-   - set `APP_URL` to the same value
-   - set `MAIL_RELAY_URL` to `https://<your-vercel-url>/api/mail-relay`
-   - **Save changes**. Render redeploys automatically, which takes a couple of minutes.
-2. **Allow Google sign-in on the new address.** In **Google Cloud Console → APIs & Services → Credentials**, open your OAuth client. Under **Authorized JavaScript origins**, add your Vercel URL and save. It can take a few minutes to start working.
-
----
-
-## Step 6. Check that everything works
-
-Open your Vercel URL and go through this list:
-
-- [ ] **Health through the site.** Open `https://<your-vercel-url>/api/health`. It should show `"status":"ok"` and a **`yourIp`** value. Compare that with your real IP (search "what is my IP"). They should match.
-  - If they don't match, every visitor shares one rate limit. Change `TRUST_PROXY` in Render to `3`, save, and check again (or `1` if it shows a private-looking address).
-- [ ] **Sign up** with email and password, then reload the page. You should still be logged in.
-- [ ] **Continue with Google** works.
-- [ ] **Create a trip**, add a place with **Search the map** (press Enter), and check it appears on the map in the right spot.
-- [ ] **Open the trip in a second browser** (or a private window) logged in as another account, after inviting it. The **Live** badge shows, and changes appear on both screens.
-- [ ] **The invite email arrives.** Check spam too.
-- [ ] **Itinerary → Plan with AI** shows "Planned by Gemini".
-- [ ] **Open a link directly**, e.g. `https://<your-vercel-url>/trips`, and reload. You should get the page, not a 404.
-
----
-
-## How the free plans behave
-
-- **The backend sleeps after 15 minutes without visitors.** The next visit wakes it, which takes about 30–60 seconds, and the Live badge shows "Reconnecting…" until it's back.
-  - **Optional:** to keep it awake, create a free job at **https://cron-job.org** that opens `https://tripzy-api.onrender.com/health` every 10 minutes. One always-on service fits within Render's 750 free hours a month.
-- **Neon:** 0.5 GB of storage. The database pauses when idle and wakes in about a second.
-- **Brevo:** 300 emails a day.
-- **Gemini:** free-tier limits apply. When reached, the planner automatically uses the route-based planner instead.
-- **OpenStreetMap search:** shared public service, limited to 1 search per second for the whole server. Fine for a small group.
-
----
-
-## Updating the live site
-
-Push to `main`:
-
-```bash
-git push
-```
-
-- **Vercel** rebuilds the frontend automatically.
-- **Render** rebuilds the backend and applies any new database migrations (`npm run db:deploy` is part of the build).
-
----
+- `https://<your-site>/api/health` shows `"status":"ok"`, and `yourIp` matches your real IP. If it doesn't, adjust `TRUST_PROXY` in `render.yaml`.
+- Sign up, reload, and you're still logged in. Google sign-in works.
+- Two accounts on one trip see each other's changes live.
+- An invite to your own email arrives (check Spam the first time).
 
 ## Troubleshooting
 
-| Symptom | Likely cause and fix |
+| Symptom | Fix |
 |---|---|
-| Render build fails at `prisma generate` or `migrate deploy` | Check the build command is `npm ci --include=dev && npm run db:deploy` (from `render.yaml`) and that `DATABASE_URL` is the **direct** Neon string ending in `?sslmode=require`. |
-| `/health` says `"database":"down"` | `DATABASE_URL` is wrong, or the Neon project was deleted or paused. Re-copy it from Neon → Connect. |
-| Browser console shows a CORS error | `CLIENT_URL` in Render isn't exactly your Vercel URL (check `https`, no trailing slash, same spelling). |
-| Logged out after every reload | `VITE_API_URL` isn't `/api`, or `Frontend/vercel.json` still says `YOUR-RENDER-SERVICE`. Fix it and redeploy. |
-| Reloading `/trips/...` gives a 404 | Vercel's **Root Directory** isn't `Frontend`, so `vercel.json` isn't used. |
-| Live badge stays "Reconnecting…" | `VITE_SOCKET_URL` is wrong, or the backend is still waking up (wait a minute). |
-| "Continue with Google" missing or `origin_mismatch` | `GOOGLE_CLIENT_ID` isn't set on Render, or the Vercel URL isn't in Authorized JavaScript origins. |
-| Invites show a link but no email arrives | Render logs → "Failed to send email" shows the reason. `Mail relay responded 401`: `MAIL_RELAY_SECRET` differs between Render and Vercel. `503`: `SMTP_URL`/`MAIL_RELAY_SECRET` missing on Vercel (redeploy after adding them). `502`: Gmail refused; check the app password in `SMTP_URL` (Vercel → Logs shows details). |
-| AI planner always says "route-based plan" | `GEMINI_API_KEY` isn't set on Render, or the daily free quota was reached. |
+| Render build fails | `DATABASE_URL` is wrong: it should be the direct (non-`-pooler`) string, with no quotes or spaces |
+| **502** or a slow first load | The free API was asleep (~30–60 s to wake). The app retries automatically. To avoid it, ping `/health` every 10 minutes with [cron-job.org](https://cron-job.org). |
+| CORS error | `CLIENT_URL` isn't exactly your Vercel address |
+| Logged out on every reload | `VITE_API_URL` isn't `/api`, or `vercel.json` points to the wrong API |
+| Live badge stuck on "Reconnecting" | `VITE_SOCKET_URL` is wrong, or the API is still waking up |
+| Google `origin_mismatch` | The Vercel address is missing from Authorized JavaScript origins |
+| Invite says "copy link" instead of "emailed" | Render log "Mail relay responded…": **401** means the secrets differ, **503** means the Vercel settings are missing (redeploy), **502** means Gmail refused (check `SMTP_URL`) |
+| AI always gives the "route-based plan" | `GEMINI_API_KEY` is missing, or Gemini is overloaded or over its free quota (it recovers on its own) |
 
----
+**Updating:** `git push` to `main` redeploys both sides, and database migrations run automatically.
 
-## Security checklist
-
-- Secrets live only in Render's and Vercel's settings, never in git. `.env` is git-ignored.
-- Production uses its own `JWT_ACCESS_SECRET` (generated by Render), not your local one.
-- Never run the seed script on the production database.
-- If a key ever leaks (e.g. pasted somewhere public), regenerate it at its provider and update it in Render.
+**Never** commit real keys, and never run `npm run db:seed` on the production database.
