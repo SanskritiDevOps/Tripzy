@@ -20,10 +20,11 @@ services:
         value: "22"
       - key: NODE_ENV
         value: production
-      # Requests reach the API through two proxies: Vercel (the /api rewrite) and
+      # Requests reach the API through 4 hops: Vercel (the /api rewrite), Cloudflare and
       # Render's load balancer. Verify with https://<your-site>/api/health → yourIp.
+      # Blueprint syncs re-apply this value, so change it here, not only in the dashboard.
       - key: TRUST_PROXY
-        value: "2"
+        value: "4"
       - key: COOKIE_SAMESITE
         value: lax
       - key: JWT_ACCESS_SECRET

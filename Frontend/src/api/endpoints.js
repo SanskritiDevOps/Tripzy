@@ -10,10 +10,12 @@ async function logged(tripId, request) {
 
 export const authApi = {
   register: (body) => api.post('/auth/register', body, { auth: false }),
-  login: (body) => api.post('/auth/login', body, { auth: false }),
+  // Login and session refresh wait for a sleeping backend; sign-up doesn't (a retry could
+  // report "email already in use" for an account the first attempt did create).
+  login: (body) => api.post('/auth/login', body, { auth: false, retryOnWake: true }),
   google: (credential) => api.post('/auth/google', { credential }, { auth: false }),
   providers: () => api.get('/auth/providers', { auth: false }),
-  refresh: () => api.post('/auth/refresh', undefined, { auth: false }),
+  refresh: () => api.post('/auth/refresh', undefined, { auth: false, retryOnWake: true }),
   logout: () => api.post('/auth/logout', undefined, { auth: false }),
   me: () => api.get('/auth/me'),
 }

@@ -24,7 +24,14 @@ function AuthBridge() {
   }, [bootstrap])
 
   useEffect(() => {
+    let lastWakingToast = 0
     configureApi({
+      // Free hosting: tell people why the first request after a quiet spell is slow.
+      onWaking: () => {
+        if (Date.now() - lastWakingToast < 60_000) return
+        lastWakingToast = Date.now()
+        toast.info('Waking up the server… this can take up to a minute on the free plan.')
+      },
       onUnauthorized: () => {
         const wasSignedIn = useAuthStore.getState().status === 'authenticated'
         useAuthStore.getState().clearSession()

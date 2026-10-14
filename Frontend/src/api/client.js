@@ -21,8 +21,16 @@ export class ApiError extends Error {
   }
 }
 
+// The free backend sleeps when idle and takes ~30–60 s to wake. Meanwhile the proxy
+// answers 502/503/504 with an error page (not Tripzy JSON). Safe requests wait and retry.
+const WAKE_STATUSES = new Set([502, 503, 504])
+const WAKE_DELAYS_MS = [2000, 4000, 8000, 15000, 20000] // ~49 s in total
+const WAKING_MESSAGE = 'Tripzy’s server is waking up (this can take up to a minute). Please try again in a moment.'
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+
 const hooks = {
   getAccessToken: () => null,
+  onWaking: () => {},
   refreshSession: async () => false,
   onUnauthorized: () => {},
   getSocketId: () => null,
@@ -33,7 +41,30 @@ export function configureApi(overrides) {
   Object.assign(hooks, overrides)
 }
 
-async function send(path, { method = 'GET', body, token, signal, headers: extraHeaders }) {
+/** A proxy error page while the backend wakes up, as opposed to a real answer from the API. */
+const isWakeUpError = (error) => error instanceof ApiError && WAKE_STATUSES.has(error.status) && !error.code
+
+/**
+ * Sends a request; while the backend is waking up, GETs (and requests marked
+ * `retryOnWake`, e.g. login and session refresh) are retried for up to ~50 s.
+ */
+async function send(path, { retryOnWake, ...options }) {
+  const retry = retryOnWake ?? (options.method ?? 'GET') === 'GET'
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await sendOnce(path, options)
+    } catch (error) {
+      if (!isWakeUpError(error)) throw error
+      if (!retry || attempt >= WAKE_DELAYS_MS.length || options.signal?.aborted) {
+        throw new ApiError(error.status, { message: WAKING_MESSAGE, code: 'SERVER_WAKING' })
+      }
+      hooks.onWaking()
+      await sleep(WAKE_DELAYS_MS[attempt])
+    }
+  }
+}
+
+async function sendOnce(path, { method = 'GET', body, token, signal, headers: extraHeaders }) {
   const headers = { Accept: 'application/json', ...extraHeaders }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (token) headers.Authorization = `Bearer ${token}`
