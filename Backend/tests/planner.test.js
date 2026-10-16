@@ -225,9 +225,10 @@ describe('POST /itinerary/generate with Gemini (mocked)', () => {
   it('falls back to the route-based plan when Gemini is rate limited', async () => {
     const ctx = await setup()
     env.GEMINI_API_KEY = 'test-key'
-    mockGemini(429)
+    const calls = mockGemini(429, 429, 429, 429, 429, 429) // every model, both passes, out of quota
     const res = await generate(ctx, ctx.member, { dayIds: [ctx.days[0].id, ctx.days[1].id], places: allPlaces(ctx) }).expect(200)
     expect(res.body).toMatchObject({ engine: 'code', fallbackCode: 'AI_RATE_LIMITED', notice: expect.stringContaining('usage limit') })
+    expect(calls).toHaveLength(6)
     expect(res.body.days.flatMap((d) => d.stops)).toHaveLength(ctx.places.length)
   })
 
@@ -285,7 +286,7 @@ describe('POST /itinerary/plan (save a draft)', () => {
 })
 
 describe('Gemini overload handling', () => {
-  it('retries once when Gemini is briefly overloaded (503), then uses its plan', async () => {
+  it('switches to the next model when the main one is overloaded (503), and says which model planned', async () => {
     const ctx = await setup()
     env.GEMINI_API_KEY = 'test-key'
     let calls = 0
@@ -300,16 +301,77 @@ describe('Gemini overload handling', () => {
       }),
     )
     const res = await generate(ctx, ctx.member, { dayIds: [ctx.days[0].id], places: [{ placeId: ctx.byName['Hawa Mahal'].id, durationMinutes: 60 }] }).expect(200)
-    expect(res.body.engine).toBe('gemini')
+    expect(res.body).toMatchObject({ engine: 'gemini', model: env.GEMINI_FALLBACK_MODELS[0] })
     expect(calls).toBe(2)
   })
 
-  it('falls back to the route-based plan when Gemini stays overloaded', async () => {
+  it('falls back to the route-based plan when every Gemini model is overloaded', async () => {
     const ctx = await setup()
     env.GEMINI_API_KEY = 'test-key'
-    const calls = mockGemini(503, 503)
+    const calls = mockGemini(503, 503, 503, 503, 503, 503)
     const res = await generate(ctx, ctx.member, { dayIds: [ctx.days[0].id], places: [{ placeId: ctx.byName['Hawa Mahal'].id, durationMinutes: 60 }] }).expect(200)
     expect(res.body).toMatchObject({ engine: 'code', fallbackCode: 'AI_UNAVAILABLE' })
-    expect(calls).toHaveLength(2)
+    const chain = [env.GEMINI_MODEL, ...env.GEMINI_FALLBACK_MODELS]
+    expect(calls.map((c) => c.url.match(/models\/([^:]+):/)[1])).toEqual([...chain, ...chain]) // two passes
+  })
+})
+
+describe('Gemini model chain', () => {
+  it('does not try other models when the API key is rejected', async () => {
+    const ctx = await setup()
+    env.GEMINI_API_KEY = 'bad-key'
+    const calls = mockGemini(403, 200, 200)
+    const res = await generate(ctx, ctx.member, { dayIds: [ctx.days[0].id], places: allPlaces(ctx).slice(0, 2) }).expect(200)
+    expect(res.body).toMatchObject({ engine: 'code', fallbackCode: 'AI_AUTH' })
+    expect(calls).toHaveLength(1)
+  })
+})
+
+describe('Gemini time budget', () => {
+  it('gives up on a hanging main model in time for a fallback to answer', async () => {
+    const ctx = await setup()
+    env.GEMINI_API_KEY = 'test-key'
+    const models = []
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url, init) => {
+        const model = String(url).match(/models\/([^:]+):/)[1]
+        models.push(model)
+        if (model === env.GEMINI_MODEL) {
+          // Hangs until the per-model timeout aborts it.
+          return new Promise((_resolve, reject) => init.signal.addEventListener('abort', () => reject(Object.assign(new Error('timed out'), { name: 'TimeoutError' }))))
+        }
+        const refs = refsFrom({ body: JSON.parse(init.body) })
+        const answer = { days: [{ dayNumber: 1, items: [{ placeRef: refs['Hawa Mahal'], startTime: '09:00', tip: 'Go early.' }] }], unplaced: [] }
+        return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(answer) }] } }] }), { status: 200 })
+      }),
+    )
+    const started = Date.now()
+    const res = await generate(ctx, ctx.member, { dayIds: [ctx.days[0].id], places: [{ placeId: ctx.byName['Hawa Mahal'].id, durationMinutes: 60 }] }).expect(200)
+    expect(res.body).toMatchObject({ engine: 'gemini', model: env.GEMINI_FALLBACK_MODELS[0] })
+    expect(models).toEqual([env.GEMINI_MODEL, env.GEMINI_FALLBACK_MODELS[0]])
+    // The hanging model gets at most half of the 50 s budget, leaving the rest for fallbacks.
+    expect(Date.now() - started).toBeLessThan(30_000)
+  }, 45_000)
+})
+
+describe('Gemini busy spikes', () => {
+  it('goes round the models a second time when all were busy, and plans with AI', async () => {
+    const ctx = await setup()
+    env.GEMINI_API_KEY = 'test-key'
+    let calls = 0
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url, init) => {
+        calls += 1
+        if (calls <= 3) return new Response(JSON.stringify({ error: { status: 'UNAVAILABLE', message: 'high demand' } }), { status: 503 })
+        const refs = refsFrom({ body: JSON.parse(init.body) })
+        const answer = { days: [{ dayNumber: 1, items: [{ placeRef: refs['Hawa Mahal'], startTime: '09:00', tip: 'Go early.' }] }], unplaced: [] }
+        return new Response(JSON.stringify({ candidates: [{ finishReason: 'STOP', content: { parts: [{ text: JSON.stringify(answer) }] } }] }), { status: 200 })
+      }),
+    )
+    const res = await generate(ctx, ctx.member, { dayIds: [ctx.days[0].id], places: [{ placeId: ctx.byName['Hawa Mahal'].id, durationMinutes: 60 }] }).expect(200)
+    expect(res.body).toMatchObject({ engine: 'gemini', model: env.GEMINI_MODEL })
+    expect(calls).toBe(4)
   })
 })

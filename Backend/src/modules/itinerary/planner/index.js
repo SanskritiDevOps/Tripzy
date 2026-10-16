@@ -13,9 +13,11 @@ import { prisma } from '../../../config/prisma.js'
 import { AppError } from '../../../utils/AppError.js'
 import { checkAiPlan, codePlan, planSettings, toMinutes, toTime } from './engine.js'
 import { travelMinutes } from './geo.js'
-import { AiError, generateJson, isAiConfigured } from './gemini.js'
+import { AiError, generateJson, isAiConfigured, modelChain } from './gemini.js'
 
-const TOTAL_BUDGET_MS = 55_000
+// The whole AI attempt (all models, validation retry). The web app calls /generate
+// directly (not through Vercel's ~30 s proxy), so it can wait this long for Gemini.
+const TOTAL_BUDGET_MS = 50_000
 
 const SYSTEM = `You are Tripzy's itinerary planner for a group trip. You receive a JSON brief and return a day-by-day plan as JSON.
 
@@ -182,19 +184,21 @@ async function planWithAi(context, settings, input, code, log) {
   const brief = buildBrief({ ...context, settings, input, groups: code.groups, refs })
   const codePlacedCount = code.days.reduce((sum, d) => sum + d.stops.length, 0)
   const contents = [{ role: 'user', text: `Plan this trip. Brief:\n${JSON.stringify(brief)}` }]
-  const startedAt = Date.now()
+  const deadline = Date.now() + TOTAL_BUDGET_MS
+  let models = modelChain()
 
   for (let attempt = 1; attempt <= 2; attempt++) {
-    const remaining = TOTAL_BUDGET_MS - (Date.now() - startedAt)
-    const { json, text } = await generateJson({ system: SYSTEM, contents, schema: RESPONSE_SCHEMA, timeoutMs: Math.min(env.AI_TIMEOUT_MS, remaining) })
+    const { json, text, model } = await generateJson({ system: SYSTEM, contents, schema: RESPONSE_SCHEMA, deadline, models })
+    // A follow-up turn goes to the model that answered (or the ones after it).
+    models = models.slice(models.indexOf(model))
     const { errors, usable, plan } = checkAiPlan(json, { days: context.days, refs, settings, codePlacedCount })
-    log.info({ attempt, errors: errors.length, usable }, 'AI itinerary attempt')
-    if (errors.length === 0) return { plan, attempts: attempt, warnings: [] }
+    log.info({ attempt, model, errors: errors.length, usable }, 'AI itinerary attempt')
+    if (errors.length === 0) return { plan, attempts: attempt, model, warnings: [] }
 
-    const timeLeft = TOTAL_BUDGET_MS - (Date.now() - startedAt)
+    const timeLeft = deadline - Date.now()
     if (attempt === 2 || timeLeft < 8000) {
       // Repaired plan: invalid entries dropped, overflowing stops moved to "unplaced".
-      if (usable) return { plan, attempts: attempt, warnings: ['Some suggestions were adjusted to fit travel time and locked stops.'] }
+      if (usable) return { plan, attempts: attempt, model, warnings: ['Some suggestions were adjusted to fit travel time and locked stops.'] }
       throw new AiError('AI_INVALID_PLAN', 'Gemini’s plan didn’t pass validation.')
     }
     contents.push({ role: 'model', text }, { role: 'user', text: `Your plan has these problems:\n- ${errors.join('\n- ')}\nReturn the full corrected JSON plan.` })
@@ -237,8 +241,8 @@ export async function generatePlan(tripId, input, log = logger) {
   }
 
   try {
-    const { plan, attempts, warnings } = await planWithAi(context, settings, input, code, log)
-    return { engine: 'gemini', model: env.GEMINI_MODEL, attempts, notice: warnings[0] ?? null, ...present(context, plan, settings, input) }
+    const { plan, attempts, model, warnings } = await planWithAi(context, settings, input, code, log)
+    return { engine: 'gemini', model, attempts, notice: warnings[0] ?? null, ...present(context, plan, settings, input) }
   } catch (error) {
     if (!(error instanceof AiError)) throw error
     log.warn({ code: error.code, message: error.message, detail: error.detail }, 'AI itinerary failed — using code-only plan')

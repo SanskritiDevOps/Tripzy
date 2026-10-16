@@ -262,12 +262,13 @@ export default function ItineraryTab() {
           </div>
           <Card className="mt-4 hidden p-4 lg:block">
             <p className="flex items-center gap-1.5 text-xs font-semibold text-violet-700">
-              {aiStatus?.enabled ? <Sparkles className="size-3.5" /> : <Wand2 className="size-3.5" />} {aiStatus?.enabled ? 'Plan with AI' : 'Auto-plan'}
+              {trip.remote && aiStatus?.enabled !== false ? <Sparkles className="size-3.5" /> : <Wand2 className="size-3.5" />}{' '}
+              {trip.remote && aiStatus?.enabled !== false ? 'Plan with AI' : 'Auto-plan'}
             </p>
             <p className="mt-1 text-xs text-slate-500">
               {!trip.remote
                 ? 'Fills every day with unscheduled, upvoted places — grouped by distance. Locked and existing stops stay put.'
-                : aiStatus?.enabled
+                : aiStatus?.enabled !== false
                   ? 'Pick places and the time at each — Gemini orders your days, times meals and adds tips. Locked stops stay put.'
                   : 'Pick places and the time at each — they’re grouped by distance and timed for you. Locked stops stay put.'}
             </p>
@@ -350,7 +351,7 @@ export default function ItineraryTab() {
 
           <div className="mt-6 lg:hidden">
             <Button variant="secondary" icon={Sparkles} className="w-full" loading={planning} onClick={() => openPlanner()}>
-              {aiStatus?.enabled ? 'Plan whole trip with AI' : 'Auto-plan whole trip'}
+              {trip.remote && aiStatus?.enabled !== false ? 'Plan whole trip with AI' : 'Auto-plan whole trip'}
             </Button>
           </div>
         </section>

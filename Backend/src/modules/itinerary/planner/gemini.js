@@ -4,8 +4,6 @@
 import { env } from '../../../config/env.js'
 
 const BASE_URL = 'https://generativelanguage.googleapis.com/v1beta'
-const OVERLOADED = new Set([500, 503])
-const OVERLOAD_RETRY_MS = 2000
 
 export class AiError extends Error {
   /** `detail`: what Gemini itself said (status + message), for the server log only. */
@@ -29,43 +27,83 @@ function describeHttpError(status, body) {
   return new AiError('AI_REQUEST', `Gemini couldn’t process the request (${status}).`, logDetail)
 }
 
+/** The main model first, then the fallbacks (no duplicates). */
+export const modelChain = () => [...new Set([env.GEMINI_MODEL, ...env.GEMINI_FALLBACK_MODELS])]
+
+// Worth trying the next model: overloaded (500/503), out of quota (429), or not offered (404).
+const TRY_NEXT_MODEL = new Set([404, 429, 500, 503])
+const MIN_CALL_MS = 3000
+const SECOND_PASS_PAUSE_MS = 2000
+const SECOND_PASS_MIN_MS = 10_000 // only go round again if this much time is left
+
 /**
- * Sends a conversation and returns the parsed JSON reply plus the raw text
- * (to append to `contents` for a follow-up turn).
+ * Sends a conversation and returns { json, text, model }: the parsed JSON reply, the raw
+ * text (to append to `contents` for a follow-up turn) and which model answered.
+ * Tries each model in `models` until one answers, all within `deadline` (epoch ms).
  *
  * contents: [{ role: 'user' | 'model', text }]
  */
-export async function generateJson({ system, contents, schema, timeoutMs = env.AI_TIMEOUT_MS }) {
+export async function generateJson({ system, contents, schema, deadline = Date.now() + env.AI_TIMEOUT_MS, models = modelChain() }) {
   if (!isAiConfigured()) throw new AiError('AI_DISABLED', 'AI planning isn’t set up on this server.')
 
-  const request = () =>
-    fetch(`${BASE_URL}/models/${encodeURIComponent(env.GEMINI_MODEL)}:generateContent`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents: contents.map(({ role, text }) => ({ role, parts: [{ text }] })),
-        generationConfig: { responseMimeType: 'application/json', responseSchema: schema },
-      }),
-      signal: AbortSignal.timeout(timeoutMs),
-    })
-
-  let response
-  try {
-    response = await request()
-    // "Model overloaded" spikes (500/503) are usually brief: one retry after a short pause.
-    if (OVERLOADED.has(response.status)) {
-      await new Promise((resolve) => setTimeout(resolve, OVERLOAD_RETRY_MS))
-      response = await request()
+  // Two passes over the models: "busy" spikes often clear within seconds, so if every
+  // model was busy and time is left, pause briefly and go round once more.
+  const attempts = [...models.map((model) => ({ model, pass: 1 })), ...models.map((model) => ({ model, pass: 2 }))]
+  const failures = []
+  let lastError = null
+  for (const [index, { model, pass }] of attempts.entries()) {
+    if (pass === 2 && index === models.length) {
+      if (deadline - Date.now() < SECOND_PASS_MIN_MS) break
+      await new Promise((resolve) => setTimeout(resolve, SECOND_PASS_PAUSE_MS))
     }
-  } catch (error) {
-    if (error.name === 'TimeoutError' || error.name === 'AbortError') throw new AiError('AI_TIMEOUT', 'Gemini took too long to answer.')
-    throw new AiError('AI_UNAVAILABLE', 'Couldn’t reach Gemini.', `${error.name}: ${error.message}`)
+    const remaining = deadline - Date.now()
+    if (remaining < MIN_CALL_MS) break
+    // A model that hangs mustn't use up the whole budget: each attempt except the last gets
+    // at most half of the time left, so the others still get their turn.
+    const isLast = index === attempts.length - 1
+    // Whole milliseconds: AbortSignal.timeout() rejects fractions.
+    const timeoutMs = Math.floor(Math.min(env.AI_TIMEOUT_MS, isLast ? remaining : Math.max(MIN_CALL_MS, remaining / 2)))
+    let response
+    try {
+      response = await fetch(`${BASE_URL}/models/${encodeURIComponent(model)}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY },
+        body: JSON.stringify({
+          systemInstruction: { parts: [{ text: system }] },
+          contents: contents.map(({ role, text }) => ({ role, parts: [{ text }] })),
+          generationConfig: { responseMimeType: 'application/json', responseSchema: schema },
+        }),
+        signal: AbortSignal.timeout(timeoutMs),
+      })
+    } catch (error) {
+      const timedOut = error.name === 'TimeoutError' || error.name === 'AbortError'
+      lastError = timedOut
+        ? new AiError('AI_TIMEOUT', 'Gemini took too long to answer.')
+        : new AiError('AI_UNAVAILABLE', 'Couldn’t reach Gemini.')
+      failures.push(`${model}: ${timedOut ? 'timed out' : `${error.name}: ${error.message}`}`)
+      continue
+    }
+
+    const body = await response.json().catch(() => null)
+    if (!response.ok) {
+      const error = describeHttpError(response.status, body)
+      failures.push(`${model}: ${error.detail}`)
+      error.detail = failures.join(' | ')
+      if (TRY_NEXT_MODEL.has(response.status)) {
+        lastError = error
+        continue
+      }
+      throw error // e.g. a rejected key: another model won't help
+    }
+    return { ...parseAnswer(body), model }
   }
+  const error = lastError ?? new AiError('AI_TIMEOUT', 'Gemini took too long to answer.')
+  // Every model's reason, for the server log.
+  error.detail = failures.join(' | ') || error.detail
+  throw error
+}
 
-  const body = await response.json().catch(() => null)
-  if (!response.ok) throw describeHttpError(response.status, body)
-
+function parseAnswer(body) {
   const candidate = body?.candidates?.[0]
   if (!candidate) {
     const reason = body?.promptFeedback?.blockReason
@@ -85,3 +123,4 @@ export async function generateJson({ system, contents, schema, timeoutMs = env.A
     throw new AiError('AI_BAD_OUTPUT', 'Gemini’s answer wasn’t valid JSON.')
   }
 }
+

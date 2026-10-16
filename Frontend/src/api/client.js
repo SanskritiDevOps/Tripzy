@@ -6,6 +6,11 @@
 //   registered handler clears auth state and sends the user to /login.
 
 const BASE_URL = (import.meta.env.VITE_API_URL ?? '/api').replace(/\/$/, '')
+// The API's own address, for slow requests (AI planning) that must not go through the
+// frontend host's proxy, which gives up after ~30 s. Same server as the live-updates socket.
+// Falls back to BASE_URL (e.g. local dev, where the Vite proxy has no such limit).
+const DIRECT_ORIGIN = import.meta.env.VITE_API_DIRECT_URL || import.meta.env.VITE_SOCKET_URL || ''
+const DIRECT_BASE_URL = DIRECT_ORIGIN ? `${DIRECT_ORIGIN.replace(/\/$/, '')}/api` : BASE_URL
 
 export class ApiError extends Error {
   constructor(status, { message, code, details } = {}) {
@@ -64,7 +69,7 @@ async function send(path, { retryOnWake, ...options }) {
   }
 }
 
-async function sendOnce(path, { method = 'GET', body, token, signal, headers: extraHeaders }) {
+async function sendOnce(path, { method = 'GET', body, token, signal, headers: extraHeaders, direct = false }) {
   const headers = { Accept: 'application/json', ...extraHeaders }
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (token) headers.Authorization = `Bearer ${token}`
@@ -74,7 +79,7 @@ async function sendOnce(path, { method = 'GET', body, token, signal, headers: ex
 
   let response
   try {
-    response = await fetch(`${BASE_URL}${path}`, {
+    response = await fetch(`${direct ? DIRECT_BASE_URL : BASE_URL}${path}`, {
       method,
       headers,
       body: body === undefined ? undefined : JSON.stringify(body),

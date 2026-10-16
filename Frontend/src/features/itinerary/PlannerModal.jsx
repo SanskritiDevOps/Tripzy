@@ -43,7 +43,12 @@ function Planner({ onClose, trip, places, placesById, itinerary, totals, ai, pre
   const [dayEnd, setDayEnd] = useState('20:30')
   const [pace, setPace] = useState('balanced')
   const [notes, setNotes] = useState('')
-  const [useAi, setUseAi] = useState(Boolean(ai?.enabled))
+  // `ai` is null until the server has answered "is AI available?". Assume yes until it
+  // says no — the server falls back to the route-based planner by itself if AI is off.
+  // (Locking in "no AI" while the answer was still loading made quick clicks skip Gemini.)
+  const aiOff = ai?.enabled === false
+  const [aiChoice, setAiChoice] = useState(null) // the user's explicit tick/untick, if any
+  const useAi = !aiOff && (aiChoice ?? true)
   const [error, setError] = useState('')
   const [draft, setDraft] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -346,11 +351,11 @@ function Planner({ onClose, trip, places, placesById, itinerary, totals, ai, pre
             )}
           </Field>
 
-          {ai?.enabled ? (
+          {!aiOff ? (
             <div className="rounded-2xl bg-violet-50/70 p-3 ring-1 ring-violet-100">
               <Checkbox
                 checked={useAi}
-                onChange={(e) => setUseAi(e.target.checked)}
+                onChange={(e) => setAiChoice(e.target.checked)}
                 label={
                   <span>
                     <span className="font-semibold text-violet-900">Use Gemini AI</span>{' '}
@@ -377,7 +382,7 @@ function Planner({ onClose, trip, places, placesById, itinerary, totals, ai, pre
           <p className="mt-4 font-semibold text-slate-900">{useAi ? 'Planning with Gemini…' : 'Planning your days…'}</p>
           <p className="mt-1 max-w-sm text-sm text-slate-500">
             {useAi
-              ? 'Grouping places by distance, asking Gemini for the best order, meal times and tips, then checking travel times. This can take up to half a minute.'
+              ? 'Grouping places by distance, asking Gemini for the best order, meal times and tips, then checking travel times. This can take up to a minute.'
               : 'Grouping places by distance and fitting them into each day.'}
           </p>
         </div>

@@ -57,7 +57,8 @@ export const itineraryApi = {
   /** { ai: { enabled, provider, model }, defaults } */
   planner: (tripId) => api.get(`/trips/${tripId}/itinerary/planner`),
   /** Draft only (Gemini + validation, or the route-based planner) — nothing is saved. */
-  generate: (tripId, body, options) => api.post(`/trips/${tripId}/itinerary/generate`, body, options),
+  // Straight to the API, not through Vercel's ~30 s proxy: AI planning can take longer.
+  generate: (tripId, body, options) => api.post(`/trips/${tripId}/itinerary/generate`, body, { ...options, direct: true }),
 }
 
 export const expensesApi = {

@@ -40,7 +40,14 @@ const schema = z.object({
   // Optional: AI itinerary planning with Google Gemini (key from https://aistudio.google.com/apikey).
   // Without a key the planner uses the built-in route-based algorithm.
   GEMINI_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
-  GEMINI_MODEL: z.string().trim().min(1).default('gemini-3.8-flash'),
+  // Default order favours models that answer reliably on the free tier; the newest
+  // (gemini-3.8-flash) is often overloaded, so it's the last resort.
+  GEMINI_MODEL: z.string().trim().min(1).default('gemini-3.6-flash'),
+  // Tried in order when the main model is overloaded, rate-limited or unavailable.
+  GEMINI_FALLBACK_MODELS: z
+    .string()
+    .default('gemini-3.1-flash-lite,gemini-3.8-flash')
+    .transform((v) => v.split(',').map((m) => m.trim()).filter(Boolean)),
   AI_TIMEOUT_MS: z.coerce.number().int().min(5000).max(120000).default(30000),
   COOKIE_SAMESITE: z.enum(['lax', 'strict', 'none']).default('lax'),
   TRUST_PROXY: z.coerce.number().int().min(0).default(0),
