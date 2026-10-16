@@ -227,7 +227,7 @@ describe('POST /itinerary/generate with Gemini (mocked)', () => {
     env.GEMINI_API_KEY = 'test-key'
     const calls = mockGemini(429, 429, 429, 429, 429, 429) // every model, both passes, out of quota
     const res = await generate(ctx, ctx.member, { dayIds: [ctx.days[0].id, ctx.days[1].id], places: allPlaces(ctx) }).expect(200)
-    expect(res.body).toMatchObject({ engine: 'code', fallbackCode: 'AI_RATE_LIMITED', notice: expect.stringContaining('usage limit') })
+    expect(res.body).toMatchObject({ engine: 'code', fallbackCode: 'AI_RATE_LIMITED', notice: expect.stringContaining('busy right now') })
     expect(calls).toHaveLength(6)
     expect(res.body.days.flatMap((d) => d.stops)).toHaveLength(ctx.places.length)
   })

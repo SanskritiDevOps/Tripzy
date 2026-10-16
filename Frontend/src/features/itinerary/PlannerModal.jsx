@@ -358,7 +358,7 @@ function Planner({ onClose, trip, places, placesById, itinerary, totals, ai, pre
                 onChange={(e) => setAiChoice(e.target.checked)}
                 label={
                   <span>
-                    <span className="font-semibold text-violet-900">Use Gemini AI</span>{' '}
+                    <span className="font-semibold text-violet-900">Use AI</span>{' '}
                     <span className="text-violet-700">for order, meal timing and tips</span>
                   </span>
                 }
@@ -368,7 +368,7 @@ function Planner({ onClose, trip, places, placesById, itinerary, totals, ai, pre
           ) : (
             <p className="flex items-start gap-2 rounded-2xl bg-sand-50 p-3 text-xs text-slate-500 ring-1 ring-sand-200">
               <Bot className="mt-0.5 size-4 shrink-0 text-slate-400" />
-              Gemini AI isn’t configured on the server, so Tripzy’s route-based planner will group places by distance and time the stops.
+              AI planning isn’t available right now, so Tripzy’s route-based planner will group places by distance and time the stops.
             </p>
           )}
         </div>
@@ -379,10 +379,10 @@ function Planner({ onClose, trip, places, placesById, itinerary, totals, ai, pre
           <span className="grid size-14 place-items-center rounded-2xl bg-violet-50 text-violet-600">
             <Loader2 className="size-7 animate-spin" aria-hidden />
           </span>
-          <p className="mt-4 font-semibold text-slate-900">{useAi ? 'Planning with Gemini…' : 'Planning your days…'}</p>
+          <p className="mt-4 font-semibold text-slate-900">{useAi ? 'Planning with AI…' : 'Planning your days…'}</p>
           <p className="mt-1 max-w-sm text-sm text-slate-500">
             {useAi
-              ? 'Grouping places by distance, asking Gemini for the best order, meal times and tips, then checking travel times. This can take up to a minute.'
+              ? 'Grouping places by distance, asking AI for the best order, meal times and tips, then checking travel times. This can take up to a minute.'
               : 'Grouping places by distance and fitting them into each day.'}
           </p>
         </div>
@@ -400,7 +400,7 @@ function Preview({ draft, placesById, mode }) {
       <div className="flex flex-wrap items-center gap-2">
         {draft.engine === 'gemini' ? (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1 text-xs font-semibold text-violet-700 ring-1 ring-violet-200">
-            <Sparkles className="size-3.5" /> Planned by Gemini{draft.model ? ` · ${draft.model}` : ''}
+            <Sparkles className="size-3.5" /> Planned by AI
           </span>
         ) : (
           <span className="inline-flex items-center gap-1.5 rounded-full bg-ocean-50 px-2.5 py-1 text-xs font-semibold text-ocean-700 ring-1 ring-ocean-200">

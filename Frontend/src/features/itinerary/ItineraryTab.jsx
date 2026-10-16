@@ -269,7 +269,7 @@ export default function ItineraryTab() {
               {!trip.remote
                 ? 'Fills every day with unscheduled, upvoted places — grouped by distance. Locked and existing stops stay put.'
                 : aiStatus?.enabled !== false
-                  ? 'Pick places and the time at each — Gemini orders your days, times meals and adds tips. Locked stops stay put.'
+                  ? 'Pick places and the time at each — AI orders your days, times meals and adds tips. Locked stops stay put.'
                   : 'Pick places and the time at each — they’re grouped by distance and timed for you. Locked stops stay put.'}
             </p>
             <Button size="sm" variant="secondary" icon={Sparkles} className="mt-3 w-full" loading={planning} onClick={() => openPlanner()}>

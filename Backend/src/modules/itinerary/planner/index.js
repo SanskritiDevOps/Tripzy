@@ -199,11 +199,11 @@ async function planWithAi(context, settings, input, code, log) {
     if (attempt === 2 || timeLeft < 8000) {
       // Repaired plan: invalid entries dropped, overflowing stops moved to "unplaced".
       if (usable) return { plan, attempts: attempt, model, warnings: ['Some suggestions were adjusted to fit travel time and locked stops.'] }
-      throw new AiError('AI_INVALID_PLAN', 'Gemini’s plan didn’t pass validation.')
+      throw new AiError('AI_INVALID_PLAN', 'The AI plan didn’t fit your days.')
     }
     contents.push({ role: 'model', text }, { role: 'user', text: `Your plan has these problems:\n- ${errors.join('\n- ')}\nReturn the full corrected JSON plan.` })
   }
-  throw new AiError('AI_INVALID_PLAN', 'Gemini’s plan didn’t pass validation.')
+  throw new AiError('AI_INVALID_PLAN', 'The AI plan didn’t fit your days.')
 }
 
 function present(context, plan, settings, input) {

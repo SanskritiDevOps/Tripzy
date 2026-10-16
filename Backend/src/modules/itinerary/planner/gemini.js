@@ -20,11 +20,12 @@ export const isAiConfigured = () => Boolean(env.GEMINI_API_KEY)
 function describeHttpError(status, body) {
   const detail = body?.error?.message ?? ''
   const logDetail = `HTTP ${status}${body?.error?.status ? ` ${body.error.status}` : ''}: ${detail.slice(0, 300) || 'no message'}`
-  if (status === 429) return new AiError('AI_RATE_LIMITED', 'Gemini’s usage limit was reached. Try again in a minute.', logDetail)
-  if (status === 401 || status === 403 || /api key/i.test(detail)) return new AiError('AI_AUTH', 'Gemini rejected the API key. Check GEMINI_API_KEY in Backend/.env.', logDetail)
-  if (status === 404) return new AiError('AI_MODEL', `Gemini model “${env.GEMINI_MODEL}” isn’t available. Check GEMINI_MODEL in Backend/.env.`, logDetail)
-  if (status >= 500) return new AiError('AI_UNAVAILABLE', 'Gemini is temporarily unavailable.', logDetail)
-  return new AiError('AI_REQUEST', `Gemini couldn’t process the request (${status}).`, logDetail)
+  // Messages are shown to users, so they say "AI" only; which provider/model and why goes to the log.
+  if (status === 429) return new AiError('AI_RATE_LIMITED', 'The AI planner is busy right now. Try again in a minute.', logDetail)
+  if (status === 401 || status === 403 || /api key/i.test(detail)) return new AiError('AI_AUTH', 'AI planning isn’t available right now.', logDetail)
+  if (status === 404) return new AiError('AI_MODEL', 'AI planning isn’t available right now.', logDetail)
+  if (status >= 500) return new AiError('AI_UNAVAILABLE', 'The AI planner is temporarily unavailable.', logDetail)
+  return new AiError('AI_REQUEST', 'The AI planner couldn’t process the request.', logDetail)
 }
 
 /** The main model first, then the fallbacks (no duplicates). */
@@ -78,8 +79,8 @@ export async function generateJson({ system, contents, schema, deadline = Date.n
     } catch (error) {
       const timedOut = error.name === 'TimeoutError' || error.name === 'AbortError'
       lastError = timedOut
-        ? new AiError('AI_TIMEOUT', 'Gemini took too long to answer.')
-        : new AiError('AI_UNAVAILABLE', 'Couldn’t reach Gemini.')
+        ? new AiError('AI_TIMEOUT', 'The AI planner took too long to answer.')
+        : new AiError('AI_UNAVAILABLE', 'Couldn’t reach the AI planner.')
       failures.push(`${model}: ${timedOut ? 'timed out' : `${error.name}: ${error.message}`}`)
       continue
     }
@@ -97,7 +98,7 @@ export async function generateJson({ system, contents, schema, deadline = Date.n
     }
     return { ...parseAnswer(body), model }
   }
-  const error = lastError ?? new AiError('AI_TIMEOUT', 'Gemini took too long to answer.')
+  const error = lastError ?? new AiError('AI_TIMEOUT', 'The AI planner took too long to answer.')
   // Every model's reason, for the server log.
   error.detail = failures.join(' | ') || error.detail
   throw error
@@ -107,10 +108,10 @@ function parseAnswer(body) {
   const candidate = body?.candidates?.[0]
   if (!candidate) {
     const reason = body?.promptFeedback?.blockReason
-    throw new AiError('AI_BLOCKED', reason ? `Gemini declined the request (${reason}).` : 'Gemini returned no answer.')
+    throw new AiError('AI_BLOCKED', 'The AI planner returned no answer.', reason ? `blocked: ${reason}` : undefined)
   }
   if (candidate.finishReason && !['STOP', 'FINISH_REASON_UNSPECIFIED'].includes(candidate.finishReason)) {
-    throw new AiError('AI_BAD_OUTPUT', `Gemini stopped early (${candidate.finishReason}).`)
+    throw new AiError('AI_BAD_OUTPUT', 'The AI planner stopped early.', `finishReason: ${candidate.finishReason}`)
   }
   // Skip "thought" parts some models include; keep the answer text.
   const text = (candidate.content?.parts ?? [])
@@ -120,7 +121,7 @@ function parseAnswer(body) {
   try {
     return { json: JSON.parse(text), text }
   } catch {
-    throw new AiError('AI_BAD_OUTPUT', 'Gemini’s answer wasn’t valid JSON.')
+    throw new AiError('AI_BAD_OUTPUT', 'The AI planner’s answer couldn’t be read.', 'reply was not valid JSON')
   }
 }
 
