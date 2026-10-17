@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Compass, Loader2 } from 'lucide-react'
+import { Compass } from 'lucide-react'
 
 export function EmptyState({ icon: Icon = Compass, title, description, action, className, compact = false }) {
   return (
@@ -17,15 +17,6 @@ export function EmptyState({ icon: Icon = Compass, title, description, action, c
       {description && <p className="mt-1 max-w-sm text-sm text-slate-500">{description}</p>}
       {action && <div className="mt-5">{action}</div>}
     </div>
-  )
-}
-
-export function Spinner({ className, label = 'Loading' }) {
-  return (
-    <span role="status" className={clsx('inline-flex items-center gap-2 text-sm text-slate-500', className)}>
-      <Loader2 className="size-4 animate-spin text-ocean-600" aria-hidden />
-      <span>{label}…</span>
-    </span>
   )
 }
 

@@ -1,12 +1,12 @@
-// Client-side stand-in for the REST API + database described in the README.
-// Every action mirrors an endpoint so it can later be swapped for TanStack Query
-// mutations without changing the components that call it.
+// All trip data the UI renders, persisted in localStorage. Example trips live only
+// here; saved trips are copies of the API's data, refreshed by the sync hooks in
+// features/trips (their changes go through the API first).
 
 import { create } from 'zustand'
 import { createJSONStorage, persist } from 'zustand/middleware'
-import { createSeedData } from '../data/mockData'
+import { createExampleData } from '../data/exampleTrips'
 import { findDestination } from '../data/destinations'
-import { addDays, timeToMinutes, todayIso, tripLength } from '../utils/dates'
+import { addDays, timeToMinutes, tripLength } from '../utils/dates'
 import { autoPlan, retimeItems } from '../utils/planner'
 
 const STORAGE_KEY = 'tripzy-demo-state'
@@ -42,7 +42,7 @@ function buildDays(tripId, startDate, endDate, existing = []) {
   })
 }
 
-/** Auto-plan for a trip (README §11 code-only path). Pure: reads state, returns drafts. */
+/** Code-only auto-plan for a trip. Pure: reads state, returns drafts. */
 function computePlanDrafts(s, tripId, onlyDayId) {
   let days = s.itineraryDays.filter((d) => d.tripId === tripId).sort((a, b) => a.dayNumber - b.dayNumber)
   const dayIds = new Set(days.map((d) => d.id))
@@ -86,21 +86,21 @@ export const useTripzyStore = create(
         }))
 
       return {
-        ...createSeedData(),
+        ...createExampleData(),
         // Set from the authenticated API session (see useAuthStore).
         currentUserId: null,
         sessionUserId: null,
 
-        // ── Session identity ───────────────────────────────────────────
+        // Session identity
         /**
          * Binds local trip data to the logged-in account. A different account
-         * than last time gets a fresh copy of the demo data with itself as the
+         * than last time gets a fresh copy of the example trips with itself as the
          * main traveller; the same account keeps its local changes.
          */
         attachSessionUser: (user) => {
           const profile = { id: user.id, name: user.name, email: user.email, avatarUrl: user.avatarUrl ?? null }
           if (get().sessionUserId !== user.id) {
-            set({ ...createSeedData(profile), currentUserId: user.id, sessionUserId: user.id })
+            set({ ...createExampleData(profile), currentUserId: user.id, sessionUserId: user.id })
             return
           }
           set((s) => ({
@@ -112,7 +112,7 @@ export const useTripzyStore = create(
          * On logout, drop every saved (server) trip from this browser: their places,
          * expenses and members' emails are stored in localStorage and would
          * otherwise stay readable on a shared computer. They reload from the server
-         * on the next login. Bundled demo trips stay.
+         * on the next login. Example trips stay.
          */
         detachSessionUser: () =>
           set((s) => {
@@ -128,7 +128,6 @@ export const useTripzyStore = create(
               trips: s.trips.filter((t) => !gone.has(t.id)),
               members,
               users: s.users.filter((u) => stillNeeded.has(u.id)),
-              invites: s.invites.filter(keep),
               places: s.places.filter(keep),
               votes: s.votes.filter((v) => !placeIds.has(v.placeId)),
               itineraryDays: s.itineraryDays.filter(keep),
@@ -232,11 +231,11 @@ export const useTripzyStore = create(
         syncRemotePacking: (tripId, items) =>
           set((s) => ({ packingItems: [...s.packingItems.filter((p) => p.tripId !== tripId), ...items] })),
 
-        /** Who has this trip open right now (from the Socket.IO room; demo trips keep their simulated list). */
+        /** Who has this trip open right now (from the Socket.IO room; example trips keep their simulated list). */
         setPresence: (tripId, userIds) => set((s) => ({ presence: { ...s.presence, [tripId]: userIds } })),
 
-        // ── Trips & members ────────────────────────────────────────────
-        /** Adds a trip locally. Pass `id` and `remote: true` for trips already created via POST /api/trips. */
+        // Trips & members
+        /** Adds a trip locally. Pass `id` and `remote: true` for trips already created on the server. */
         createTrip: ({ id = null, remote = false, name, destination, destinationId = null, startDate, endDate, budgetMinor = 0, groupType = 'friends' }) => {
           const { currentUserId } = get()
           const tripId = id ?? newId('trip')
@@ -298,7 +297,6 @@ export const useTripzyStore = create(
             return {
               trips: s.trips.filter((t) => t.id !== tripId),
               members: s.members.filter((m) => m.tripId !== tripId),
-              invites: s.invites.filter((i) => i.tripId !== tripId),
               places: s.places.filter((p) => p.tripId !== tripId),
               votes: s.votes.filter((v) => !placeIds.has(v.placeId)),
               itineraryDays: s.itineraryDays.filter((d) => d.tripId !== tripId),
@@ -310,37 +308,12 @@ export const useTripzyStore = create(
             }
           }),
 
-        createInvite: (tripId) => {
-          const invite = {
-            id: newId('inv'),
-            tripId,
-            token: newId('t').slice(2, 14),
-            expiresAt: addDays(todayIso(), 7) + 'T23:59:00',
-            createdBy: get().currentUserId,
-          }
-          set((s) => ({ invites: [...s.invites, invite] }))
-          return invite
-        },
-
-        joinTrip: (token) => {
-          const { invites, members, currentUserId, users } = get()
-          const invite = invites.find((i) => i.token === token)
-          if (!invite) return { error: 'This invite link is invalid.' }
-          if (new Date(invite.expiresAt) < new Date()) return { error: 'This invite link has expired. Ask the team leader for a new one.' }
-          const already = members.some((m) => m.tripId === invite.tripId && m.userId === currentUserId)
-          if (!already) {
-            set((s) => ({ members: [...s.members, { tripId: invite.tripId, userId: currentUserId, role: 'MEMBER', joinedAt: now() }] }))
-            log(invite.tripId, 'MEMBER_JOINED', { name: users.find((u) => u.id === currentUserId)?.name })
-          }
-          return { tripId: invite.tripId }
-        },
-
         removeMember: (tripId, userId) => {
           set((s) => ({ members: s.members.filter((m) => !(m.tripId === tripId && m.userId === userId)) }))
           log(tripId, 'MEMBER_LEFT', { userId })
         },
 
-        // ── Places & votes ─────────────────────────────────────────────
+        // Places & votes
         /** Adds a place locally. Pass `id` (and the other server fields) for places created via the API. */
         addPlace: (tripId, data) => {
           const place = {
@@ -376,7 +349,7 @@ export const useTripzyStore = create(
           if (place) log(place.tripId, 'PLACE_DELETED', { name: place.name })
         },
 
-        /** PUT /places/:id/vote — clicking the same value again removes the vote. */
+        /** Clicking the same value again removes the vote. */
         castVote: (placeId, value) => {
           const { places, trips, votes, currentUserId } = get()
           const place = places.find((p) => p.id === placeId)
@@ -454,7 +427,7 @@ export const useTripzyStore = create(
             }
           }),
 
-        // ── Itinerary ──────────────────────────────────────────────────
+        // Itinerary
         addItineraryItem: (dayId, data) => {
           const item = {
             id: newId('item'),
@@ -477,8 +450,8 @@ export const useTripzyStore = create(
         },
 
         /**
-         * PATCH /itinerary/items/:id with optimistic versioning (README §10.5).
-         * Pass the version you last saw; a newer server version returns { conflict }.
+         * Optimistic versioning: pass the version you last saw; if the stop has
+         * changed since, nothing is saved and { conflict, current } is returned.
          */
         updateItineraryItem: (itemId, patch, expectedVersion) => {
           const item = get().itineraryItems.find((i) => i.id === itemId)
@@ -505,7 +478,7 @@ export const useTripzyStore = create(
             itineraryItems: s.itineraryItems.map((i) => (i.id === itemId ? { ...i, isLocked: !i.isLocked, version: i.version + 1 } : i)),
           })),
 
-        /** PATCH /trips/:id/itinerary/reorder — new order, then times are re-chained. */
+        /** Applies a new order for one day, then re-chains the start times. */
         reorderDay: (dayId, orderedIds) =>
           set((s) => {
             const placesById = Object.fromEntries(s.places.map((p) => [p.id, p]))
@@ -526,10 +499,10 @@ export const useTripzyStore = create(
           get().updateTrip(tripId, { endDate: addDays(trip.endDate, 1) })
         },
 
-        /** Code-only planner (README §11 fallback). Returns the number of stops added. */
-        /** Computes auto-plan drafts without saving them (server trips send these to the API). */
+        /** Computes auto-plan drafts without saving them (saved trips send these to the API). */
         planDrafts: (tripId, onlyDayId = null) => computePlanDrafts(get(), tripId, onlyDayId).drafts,
 
+        /** Plans and saves locally (example trips). Returns the number of stops added. */
         autoPlanTrip: (tripId, onlyDayId = null) => {
           const { drafts, keepStop } = computePlanDrafts(get(), tripId, onlyDayId)
 
@@ -556,8 +529,8 @@ export const useTripzyStore = create(
           return drafts.length
         },
 
-        // ── Expenses & settlements ─────────────────────────────────────
-        /** POST /trips/:id/expenses — the idempotency key makes double-submits harmless. */
+        // Expenses & settlements
+        /** The idempotency key makes double-submits harmless. */
         addExpense: (tripId, data) => {
           const duplicate = get().expenses.find((e) => e.idempotencyKey === data.idempotencyKey)
           if (duplicate) return duplicate.id
@@ -600,7 +573,7 @@ export const useTripzyStore = create(
           log(tripId, 'SETTLED', { from: fromUser, to: toUser, amountMinor })
         },
 
-        // ── Packing checklist ──────────────────────────────────────────
+        // Packing checklist
         addPackingItem: (tripId, { label, category, ownerId = null }) =>
           set((s) => ({
             packingItems: [...s.packingItems, { id: newId('pk'), tripId, label: label.trim(), category, packed: false, ownerId }],
@@ -611,34 +584,33 @@ export const useTripzyStore = create(
         resetPacking: (tripId) =>
           set((s) => ({ packingItems: s.packingItems.map((p) => (p.tripId === tripId ? { ...p, packed: false } : p)) })),
 
-        // ── Example trips ──────────────────────────────────────────────
-        // The bundled trips (Jaipur, Kyoto, Goa) are examples of a fully planned trip.
+        // Example trips
+        // The example trips (Jaipur, Kyoto, Goa) show what a fully planned trip looks like.
         // They live only in this browser; saved trips live on the server.
 
         /** Restores the example trips to their original state. Saved (server) trips are untouched. */
         resetExamples: () =>
           set((s) => {
             const me = s.users.find((u) => u.id === s.sessionUserId)
-            const seed = createSeedData(me ? { id: me.id, name: me.name, email: me.email, avatarUrl: me.avatarUrl } : undefined)
+            const examples = createExampleData(me ? { id: me.id, name: me.name, email: me.email, avatarUrl: me.avatarUrl } : undefined)
             const saved = new Set(s.trips.filter((t) => t.remote).map((t) => t.id))
             const keep = (row) => saved.has(row.tripId)
             const savedDayIds = new Set(s.itineraryDays.filter(keep).map((d) => d.id))
             const savedPlaceIds = new Set(s.places.filter(keep).map((pl) => pl.id))
-            const seedUserIds = new Set(seed.users.map((u) => u.id))
+            const exampleUserIds = new Set(examples.users.map((u) => u.id))
             return {
-              users: [...seed.users, ...s.users.filter((u) => !seedUserIds.has(u.id))],
-              trips: [...s.trips.filter((t) => t.remote), ...seed.trips],
-              members: [...s.members.filter(keep), ...seed.members],
-              invites: [...s.invites.filter(keep), ...seed.invites],
-              places: [...s.places.filter(keep), ...seed.places],
-              votes: [...s.votes.filter((v) => savedPlaceIds.has(v.placeId)), ...seed.votes],
-              itineraryDays: [...s.itineraryDays.filter(keep), ...seed.itineraryDays],
-              itineraryItems: [...s.itineraryItems.filter((i) => savedDayIds.has(i.dayId)), ...seed.itineraryItems],
-              expenses: [...s.expenses.filter(keep), ...seed.expenses],
-              settlements: [...s.settlements.filter(keep), ...seed.settlements],
-              packingItems: [...s.packingItems.filter(keep), ...seed.packingItems],
-              activity: [...s.activity.filter(keep), ...seed.activity],
-              presence: { ...Object.fromEntries(Object.entries(s.presence).filter(([tripId]) => saved.has(tripId))), ...seed.presence },
+              users: [...examples.users, ...s.users.filter((u) => !exampleUserIds.has(u.id))],
+              trips: [...s.trips.filter((t) => t.remote), ...examples.trips],
+              members: [...s.members.filter(keep), ...examples.members],
+              places: [...s.places.filter(keep), ...examples.places],
+              votes: [...s.votes.filter((v) => savedPlaceIds.has(v.placeId)), ...examples.votes],
+              itineraryDays: [...s.itineraryDays.filter(keep), ...examples.itineraryDays],
+              itineraryItems: [...s.itineraryItems.filter((i) => savedDayIds.has(i.dayId)), ...examples.itineraryItems],
+              expenses: [...s.expenses.filter(keep), ...examples.expenses],
+              settlements: [...s.settlements.filter(keep), ...examples.settlements],
+              packingItems: [...s.packingItems.filter(keep), ...examples.packingItems],
+              activity: [...s.activity.filter(keep), ...examples.activity],
+              presence: { ...Object.fromEntries(Object.entries(s.presence).filter(([tripId]) => saved.has(tripId))), ...examples.presence },
             }
           }),
 

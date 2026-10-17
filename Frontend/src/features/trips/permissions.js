@@ -22,8 +22,8 @@ export function getTripPermissions(role, currentUserId) {
     canRemoveMembers: isLeader,
     canManageVoting: isLeader,
     /** Locked places can only be edited or deleted by the leader. */
-    canEditPlace: (place) => Boolean(place) && (isLeader || ((isMember) && !place.isLocked)),
-    /** Expenses: whoever added it, or the leader. (Bundled demo expenses have no creator.) */
+    canEditPlace: (place) => Boolean(place) && (isLeader || (isMember && !place.isLocked)),
+    /** Expenses: whoever added it, or the leader. (Example-trip expenses have no creator.) */
     canEditExpense: (expense) => isLeader || (isMember && (!expense?.createdBy || expense.createdBy === currentUserId)),
     /** Settlements: the payer, the receiver, or the leader. */
     canRecordSettlement: (payment) => isLeader || payment?.fromUser === currentUserId || payment?.toUser === currentUserId,

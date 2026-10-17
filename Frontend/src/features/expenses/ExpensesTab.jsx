@@ -60,7 +60,7 @@ export default function ExpensesTab() {
 
   return (
     <div className="space-y-6">
-      {/* ── Summary ─────────────────────────────────────────── */}
+      {/* Summary */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="p-5">
           <div className="flex items-center gap-2">
@@ -123,7 +123,7 @@ export default function ExpensesTab() {
       </div>
 
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[minmax(0,1fr)_22rem]">
-        {/* ── Expenses list ──────────────────────────────────── */}
+        {/* Expenses list */}
         <section className="min-w-0 space-y-4" aria-labelledby="expenses-heading">
           <div className="flex items-center justify-between gap-3">
             <h2 id="expenses-heading" className="font-display text-xl font-semibold">
@@ -209,7 +209,7 @@ export default function ExpensesTab() {
           )}
         </section>
 
-        {/* ── Side: breakdown, balances, settle up ───────────── */}
+        {/* Side: breakdown, balances, settle up */}
         <aside className="space-y-4">
           <Card className="p-5">
             <CardHeader icon={PieChart} title="Spending by category" />

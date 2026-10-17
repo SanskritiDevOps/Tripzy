@@ -1,10 +1,7 @@
 @import "tailwindcss";
 
-/* ── Tripzy design tokens ─────────────────────────────────────────────
-   ocean  → primary (deep teal-blue)
-   coral  → accent (sunset / terracotta)
-   sand   → warm neutrals and surfaces
-   slate  → typography (Tailwind default)                               */
+/* Design tokens: ocean = primary, coral = accent, sand = warm neutrals and
+   surfaces, slate = text (Tailwind default). */
 @theme {
   --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Fraunces", ui-serif, Georgia, serif;

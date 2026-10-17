@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom'
 import clsx from 'clsx'
 
-export function LogoMark({ className }) {
+function LogoMark({ className }) {
   return (
     <svg viewBox="0 0 32 32" className={clsx('size-8', className)} aria-hidden>
       <rect width="32" height="32" rx="9" className="fill-ocean-700" />

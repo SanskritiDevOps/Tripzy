@@ -57,7 +57,7 @@ export function LandingPage() {
 
   return (
     <div className="-mt-16">
-      {/* ── Hero ─────────────────────────────────────────────── */}
+      {/* Hero */}
       <section className="relative overflow-hidden bg-gradient-to-b from-ocean-50 via-sand-50 to-sand-50 pt-16">
         <div className="pointer-events-none absolute -top-24 -right-24 size-[28rem] rounded-full bg-coral-200/40 blur-3xl" aria-hidden />
         <div className="pointer-events-none absolute top-40 -left-32 size-[24rem] rounded-full bg-ocean-200/50 blur-3xl" aria-hidden />
@@ -97,7 +97,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ── Trending ─────────────────────────────────────────── */}
+      {/* Trending */}
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8" aria-labelledby="trending-heading">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
@@ -115,7 +115,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ── Features ─────────────────────────────────────────── */}
+      {/* Features */}
       <section className="bg-white py-16 sm:py-20" aria-labelledby="features-heading">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <div className="max-w-2xl">
@@ -141,7 +141,7 @@ export function LandingPage() {
         </div>
       </section>
 
-      {/* ── How it works ─────────────────────────────────────── */}
+      {/* How it works */}
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 sm:py-20 lg:px-8" aria-labelledby="how-heading">
         <h2 id="how-heading" className="text-center font-display text-3xl font-semibold sm:text-4xl">
           From “we should go somewhere” to boarding
@@ -160,7 +160,7 @@ export function LandingPage() {
         </ol>
       </section>
 
-      {/* ── CTA ──────────────────────────────────────────────── */}
+      {/* CTA */}
       <section className="px-4 pb-16 sm:px-6 lg:px-8">
         <div className="relative mx-auto max-w-7xl overflow-hidden rounded-3xl bg-ocean-800 px-6 py-12 text-center sm:px-12 sm:py-16">
           <div className="pointer-events-none absolute -top-20 -right-10 size-72 rounded-full bg-coral-400/25 blur-2xl" aria-hidden />

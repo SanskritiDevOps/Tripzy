@@ -11,7 +11,6 @@ import { addDays, daysBetween, todayIso } from '../../utils/dates'
 import { useAuthStore } from '../../store/useAuthStore'
 import { buildNewTripUrl, loginPath } from '../../utils/urls'
 
-
 export function HeroSearch({ destination, onDestinationChange }) {
   const navigate = useNavigate()
   const signedIn = useAuthStore((s) => s.status === 'authenticated')

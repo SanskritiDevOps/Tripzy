@@ -1,4 +1,4 @@
-// Balances and debt simplification — README §10.2.
+// Balances and debt simplification.
 
 /**
  * Net balance per member = total paid − total owed (+ settlements).

@@ -9,7 +9,6 @@ import { toast } from '../../store/useToastStore'
 import { loginPath } from '../../utils/urls'
 import { ErrorBoundary } from '../errors/ErrorBoundary'
 import { ErrorScreen } from '../errors/ErrorScreen'
-import { DevCrash } from '../errors/DevCrash'
 
 /**
  * Restores the session on first load and handles 401s from any API call:
@@ -55,7 +54,6 @@ export function AppShell() {
       <main className="flex-1">
         {/* A crashed page keeps the navbar; going to another page clears the error. */}
         <ErrorBoundary name="Page" resetKey={pathname} fallback={(props) => <ErrorScreen {...props} variant="page" />}>
-          <DevCrash where="page" />
           <Outlet />
         </ErrorBoundary>
       </main>

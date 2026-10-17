@@ -24,7 +24,7 @@ const PACE_HINTS = {
 }
 
 /**
- * Plan days with AI (Gemini) or the route-based planner (README §4.6, §11).
+ * Plan days with AI or the route-based planner.
  * Steps: setup (days, places + time at each, window, pace, notes) → generating →
  * preview → save. `preset` = { dayIds, mode: 'fill' | 'replace' }.
  */
@@ -45,7 +45,6 @@ function Planner({ onClose, trip, places, placesById, itinerary, totals, ai, pre
   const [notes, setNotes] = useState('')
   // `ai` is null until the server has answered "is AI available?". Assume yes until it
   // says no — the server falls back to the route-based planner by itself if AI is off.
-  // (Locking in "no AI" while the answer was still loading made quick clicks skip Gemini.)
   const aiOff = ai?.enabled === false
   const [aiChoice, setAiChoice] = useState(null) // the user's explicit tick/untick, if any
   const useAi = !aiOff && (aiChoice ?? true)

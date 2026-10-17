@@ -10,7 +10,7 @@ import { formatMoney } from '../../utils/money'
 
 const FALLBACK = { gradient: 'from-ocean-400 via-ocean-200 to-sand-200', emoji: '🧭' }
 
-/** `example`: one of the bundled example trips (shown with an "Example" badge, no leader crown). */
+/** `example`: one of the example trips (shown with an "Example" badge, no leader crown). */
 export function TripCard({ trip, members, placeCount, spentMinor, isLeader, example = false }) {
   const destination = DESTINATIONS.find((d) => d.id === trip.destinationId) ?? FALLBACK
   const status = tripStatus(trip.startDate, trip.endDate)

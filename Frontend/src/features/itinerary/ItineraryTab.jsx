@@ -40,7 +40,7 @@ import { PLACE_CATEGORIES } from '../../data/categories'
 const DAY_DROP = 'day:'
 const TIMELINE_DROP = 'timeline'
 
-/** Whether Gemini planning is configured (server trips only; demo trips plan locally). */
+/** Whether AI planning is configured (server trips only; example trips plan locally). */
 function usePlannerStatus(trip) {
   const tripId = trip.remote ? trip.id : null
   const [status, setStatus] = useState(null)
@@ -126,7 +126,7 @@ export default function ItineraryTab() {
 
   /**
    * Server trips open the planner (AI or route-based, with a preview first).
-   * Demo trips keep the instant local auto-plan.
+   * Example trips keep the instant local auto-plan.
    */
   function openPlanner({ dayIds = days.map((d) => d.id), mode = 'fill' } = {}) {
     if (trip.remote) setPlannerPreset({ dayIds, mode })
@@ -213,7 +213,7 @@ export default function ItineraryTab() {
   return (
     <DndContext sensors={sensors} collisionDetection={collisionDetection} onDragStart={handleDragStart} onDragEnd={handleDragEnd} onDragCancel={() => setDragging(null)}>
       <div className="grid grid-cols-[minmax(0,1fr)] gap-6 lg:grid-cols-[13.5rem_minmax(0,1fr)_20rem]">
-        {/* ── Day selector ─────────────────────────────────────── */}
+        {/* Day selector */}
         <aside className="min-w-0 lg:sticky lg:top-20 lg:self-start">
           <div className="mb-3 hidden items-center justify-between lg:flex">
             <h2 className="text-sm font-semibold text-slate-900">Days</h2>
@@ -278,7 +278,7 @@ export default function ItineraryTab() {
           </Card>
         </aside>
 
-        {/* ── Selected day ─────────────────────────────────────── */}
+        {/* Selected day */}
         <section aria-labelledby="day-heading" className="min-w-0">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
@@ -356,7 +356,7 @@ export default function ItineraryTab() {
           </div>
         </section>
 
-        {/* ── Side panel ───────────────────────────────────────── */}
+        {/* Side panel */}
         <aside className="min-w-0 space-y-4 lg:sticky lg:top-20 lg:self-start">
           <Card className="overflow-hidden">
             <div className="flex items-center justify-between px-4 pt-4 pb-3">

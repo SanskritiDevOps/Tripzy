@@ -1,14 +1,14 @@
-// Dates are stored as "YYYY-MM-DD" strings (README `date` columns) and
-// times as "HH:MM" strings (README `time` columns). Helpers work in local time.
+// Dates are "YYYY-MM-DD" strings and times "HH:MM" strings, as in the API.
+// Helpers work in local time.
 
 const MS_PER_DAY = 86_400_000
 
-export function parseDate(isoDate) {
+function parseDate(isoDate) {
   const [y, m, d] = isoDate.split('-').map(Number)
   return new Date(y, m - 1, d)
 }
 
-export function toIsoDate(date) {
+function toIsoDate(date) {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
   const d = String(date.getDate()).padStart(2, '0')

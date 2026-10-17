@@ -17,8 +17,8 @@ import {
   Backpack,
 } from 'lucide-react'
 
-// Place / itinerary categories. README enum: food, sight, stay, activity, other.
-// `transit` is added for airports, stations and transfers in the itinerary.
+// Place / itinerary categories (same values as the API). `transit` covers airports,
+// stations and transfers.
 export const PLACE_CATEGORIES = {
   sight: { label: 'Sight', icon: Camera, badge: 'bg-ocean-50 text-ocean-700 ring-ocean-200', dot: 'bg-ocean-500', hex: '#238898' },
   food: { label: 'Food', icon: UtensilsCrossed, badge: 'bg-coral-50 text-coral-700 ring-coral-200', dot: 'bg-coral-500', hex: '#f15f2e' },

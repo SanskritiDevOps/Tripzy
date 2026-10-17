@@ -1,11 +1,11 @@
-// Deterministic, code-only itinerary planning (README §11 fallback path):
+// Deterministic, code-only itinerary planning (used for example trips):
 // cluster places into days by distance, order by nearest neighbour, then chain times.
 
 import { estimateTravelMinutes, centroid, distanceKm, nearestNeighborOrder } from './geo'
 import { minutesToTime, timeToMinutes } from './dates'
 
-export const DAY_START = '09:00'
-export const DAY_END = '20:30'
+const DAY_START = '09:00'
+const DAY_END = '20:30'
 const PLANNABLE = new Set(['sight', 'food', 'activity', 'other'])
 
 /**

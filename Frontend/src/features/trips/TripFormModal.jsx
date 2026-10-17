@@ -87,7 +87,7 @@ function TripForm({ onClose, trip, prefill, permissions }) {
       if (isEdit) {
         const { budgetMinor, ...details } = localPayload
         const budgetChanged = canSetBudget && budgetMinor !== trip.budgetMinor
-        // Trips stored on the server are saved there first; bundled demo trips are local only.
+        // Trips stored on the server are saved there first; example trips are local only.
         // Details and budget are separate endpoints: any member may edit details, only the leader the budget.
         const shrinking = tripLength(values.startDate, values.endDate) < tripLength(trip.startDate, trip.endDate)
         if (trip.remote) {

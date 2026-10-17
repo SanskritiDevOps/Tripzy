@@ -55,7 +55,6 @@ import { Badge } from '../components/ui/Badge'
 import { formatDateRange } from '../utils/dates'
 import { ErrorBoundary } from '../components/errors/ErrorBoundary'
 import { ErrorScreen } from '../components/errors/ErrorScreen'
-import { DevCrash } from '../components/errors/DevCrash'
 
 const TABS = [
   { to: 'itinerary', label: 'Itinerary', icon: CalendarRange },
@@ -114,7 +113,7 @@ export function TripWorkspacePage() {
     )
   }
 
-  /** Runs the API call for server-stored trips (demo trips are local only). Returns false on failure. */
+  /** Runs the API call for server-stored trips (example trips are local only). Returns false on failure. */
   async function syncWithServer(call) {
     if (!trip.remote) return true
     try {
@@ -130,7 +129,7 @@ export function TripWorkspacePage() {
 
   return (
     <div className="pb-24 md:pb-12">
-      {/* ── Header ───────────────────────────────────────────── */}
+      {/* Header */}
       <div className="border-b border-sand-200 bg-gradient-to-b from-ocean-50/80 to-sand-50">
         <div className="mx-auto max-w-7xl px-4 pt-5 pb-5 sm:px-6 lg:px-8">
           <Button variant="ghost" size="sm" icon={ArrowLeft} to="/trips" className="-ml-2 text-slate-500">
@@ -241,7 +240,6 @@ export function TripWorkspacePage() {
         ) : (
           <ErrorBoundary name="Trip tab" resetKey={pathname} fallback={(props) => <ErrorScreen {...props} variant="panel" />}>
             <Suspense fallback={<PanelSkeleton />}>
-              <DevCrash where="tab" />
               <Outlet context={context} />
             </Suspense>
           </ErrorBoundary>
@@ -275,7 +273,7 @@ export function TripWorkspacePage() {
         </div>
       </nav>
 
-      {/* ── Dialogs ──────────────────────────────────────────── */}
+      {/* Dialogs */}
       <InviteModal open={dialog === 'invite'} onClose={close} trip={trip} members={members} permissions={permissions} currentUserId={currentUserId} />
       <TripFormModal open={dialog === 'settings'} onClose={close} trip={trip} permissions={permissions} />
       <Modal open={dialog === 'activity'} onClose={close} title="Activity" description="What your group has been up to." icon={Activity}>

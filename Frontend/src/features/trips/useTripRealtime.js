@@ -55,7 +55,7 @@ function createResyncQueue(tripId) {
  * - if the trip is deleted or you're removed, you're sent back to My trips
  * After a dropped connection everything is re-fetched, so nothing is missed.
  *
- * Returns { live } — true while updates are flowing. Demo trips are never live.
+ * Returns { live } — true while updates are flowing. Example trips are never live.
  */
 export function useTripRealtime(trip) {
   const tripId = trip?.remote ? trip.id : null

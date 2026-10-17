@@ -103,7 +103,7 @@ async function sendOnce(path, { method = 'GET', body, token, signal, headers: ex
  * request('/trips', { method: 'POST', body })
  * Pass `auth: false` for endpoints that must not trigger refresh/redirect (login, register…).
  */
-export async function request(path, { auth = true, ...options } = {}) {
+async function request(path, { auth = true, ...options } = {}) {
   try {
     return await send(path, { ...options, token: auth ? hooks.getAccessToken() : null })
   } catch (error) {

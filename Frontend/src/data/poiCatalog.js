@@ -1,5 +1,5 @@
-// Stand-in for GET /api/search/places (a Nominatim proxy in the backend).
-// Results are grouped by destination id from destinations.js.
+// Built-in place suggestions for the example destinations, shown instantly while
+// typing. Everything else comes from the OpenStreetMap search (GET /api/geo/search).
 
 export const POI_CATALOG = {
   jaipur: [
@@ -52,7 +52,7 @@ export const POI_CATALOG = {
   ],
 }
 
-/** Simulates the geocoding search. Matches on name and address. */
+/** Matches the built-in suggestions on name and address. */
 export function searchPlaces(destinationId, query) {
   const needle = query.trim().toLowerCase()
   const pool = POI_CATALOG[destinationId] ?? Object.values(POI_CATALOG).flat()

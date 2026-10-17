@@ -10,7 +10,7 @@ const pickApiFields = (data) => Object.fromEntries(API_FIELDS.filter((k) => data
 /**
  * Place and vote actions for one trip. Trips saved on the server go through
  * the API first (which enforces roles, locks and logs the activity) and then
- * reload; bundled demo trips stay local.
+ * reload; example trips stay local.
  * Every action is async and rejects with an ApiError the caller can show.
  */
 export function usePlaceActions(trip) {

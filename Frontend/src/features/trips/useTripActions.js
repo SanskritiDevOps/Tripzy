@@ -9,7 +9,7 @@ const pick = (data, keys) => Object.fromEntries(keys.filter((k) => data[k] !== u
 /**
  * Itinerary, expense and packing actions for one trip.
  * Saved trips go through the API (which enforces roles, locks and logs the
- * activity) and then reload from the server; demo trips update locally.
+ * activity) and then reload from the server; example trips update locally.
  * Actions are async and reject with an ApiError the caller can show.
  */
 export function useTripActions(trip) {

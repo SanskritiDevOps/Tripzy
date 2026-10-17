@@ -1,5 +1,4 @@
 // All money is handled as integers in minor units (paise / cents), never floats.
-// See README §10.1.
 
 const formatters = new Map()
 
@@ -84,7 +83,7 @@ export function splitPercent(totalMinor, entries) {
   return shares
 }
 
-export function sumMinor(items, key = 'shareMinor') {
+function sumMinor(items, key = 'shareMinor') {
   return items.reduce((sum, item) => sum + (Number(item[key]) || 0), 0)
 }
 

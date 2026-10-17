@@ -15,7 +15,7 @@ import { toast } from '../store/useToastStore'
 export function TripsPage() {
   const user = useCurrentUser()
   const allTrips = useMyTrips()
-  // Saved trips are yours and shared with your group; the bundled ones are examples.
+  // Saved trips are yours and shared with your group; the others are examples.
   const trips = useMemo(() => allTrips.filter((t) => t.remote), [allTrips])
   const examples = useMemo(() => allTrips.filter((t) => !t.remote), [allTrips])
   const examplesHidden = useTripzyStore((s) => s.examplesHidden)

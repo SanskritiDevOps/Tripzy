@@ -243,7 +243,7 @@ function RemoteActivityFeed({ trip, usersById, currentUserId }) {
 
 /**
  * Trip activity timeline. Trips saved on the server show the shared log from
- * the API; bundled demo trips show the activity recorded in this browser.
+ * the API; example trips show the activity recorded in this browser.
  */
 export function ActivityFeed({ trip, localEntries, usersById, currentUserId }) {
   const normalizedLocal = useMemo(

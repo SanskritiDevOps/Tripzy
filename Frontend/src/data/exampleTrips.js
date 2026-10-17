@@ -1,11 +1,11 @@
-// Seed data shaped like the README's tables (§7). Dates are relative to today
-// so the demo always has an upcoming trip, a later trip and a past one.
+// The example trips shown on "My trips" (Jaipur, Kyoto, Goa). Dates are relative
+// to today, so there is always an upcoming trip, a later one and a past one.
 
 import { addDays, todayIso } from '../utils/dates'
 import { splitEqual, splitPercent } from '../utils/money'
 import { POI_CATALOG } from './poiCatalog'
 
-export const DEMO_USER_ID = 'u1'
+const MAIN_TRAVELLER_ID = 'u1'
 
 const USERS = [
   { id: 'u1', name: 'Sanskriti Singh', email: 'demo@tripzy.app', color: 'bg-ocean-600' },
@@ -88,21 +88,21 @@ function rebindId(value, from, to) {
 }
 
 /**
- * Demo trips with `sessionUser` ({ id, name, email }) as the main traveller,
+ * Example trips with `sessionUser` ({ id, name, email }) as the main traveller,
  * so the logged-in account owns the Jaipur trip and is a member of the others.
  */
-export function createSeedData(sessionUser) {
-  const data = buildSeed()
+export function createExampleData(sessionUser) {
+  const data = buildExamples()
   if (!sessionUser) return data
-  const rebound = rebindId(data, DEMO_USER_ID, sessionUser.id)
+  const rebound = rebindId(data, MAIN_TRAVELLER_ID, sessionUser.id)
   rebound.users = rebound.users.map((u) => (u.id === sessionUser.id ? { ...u, name: sessionUser.name, email: sessionUser.email, avatarUrl: sessionUser.avatarUrl ?? null } : u))
   return rebound
 }
 
-function buildSeed() {
+function buildExamples() {
   const today = todayIso()
 
-  // ── Trip 1: Jaipur (upcoming, rich data) ───────────────────────────
+  // Trip 1: Jaipur (upcoming, rich data)
   const jaipurStart = addDays(today, 21)
   const jaipur = {
     id: 't-jaipur',
@@ -260,7 +260,7 @@ function buildSeed() {
     ['gear', 'Tote bag for shopping', false],
   ].map(([category, label, packed], i) => ({ id: `pk-j-${i}`, tripId: 't-jaipur', category, label, packed, ownerId: null }))
 
-  // ── Trip 2: Kyoto (later, early-stage planning) ────────────────────
+  // Trip 2: Kyoto (later, early-stage planning)
   const kyotoStart = addDays(today, 54)
   const kyoto = {
     id: 't-kyoto',
@@ -312,7 +312,7 @@ function buildSeed() {
     ['gear', 'IC card (ICOCA)', false],
   ].map(([category, label, packed], i) => ({ id: `pk-k-${i}`, tripId: 't-kyoto', category, label, packed, ownerId: null }))
 
-  // ── Trip 3: Goa (past) ─────────────────────────────────────────────
+  // Trip 3: Goa (past)
   const goaStart = addDays(today, -160)
   const goa = {
     id: 't-goa',
@@ -374,7 +374,6 @@ function buildSeed() {
     users: USERS,
     trips: [jaipur, kyoto, goa],
     members,
-    invites: [{ id: 'inv-1', tripId: 't-jaipur', token: 'jaipur-crew', expiresAt: addDays(today, 7) + 'T23:59:00', createdBy: 'u1' }],
     places: [...jaipurPlaces, ...kyotoPlaces, ...goaPlaces],
     votes: [...jaipurVotes, ...kyotoVotes],
     itineraryDays: [...jaipurDays, ...kyotoDays, ...goaDays],
@@ -383,7 +382,7 @@ function buildSeed() {
     settlements: [...jaipurSettlements, ...goaSettlements],
     packingItems: [...jaipurPacking, ...kyotoPacking],
     activity,
-    // Simulated presence (README P1) — who is "online" in each trip room.
+    // Who appears "online" in each example trip.
     presence: { 't-jaipur': ['u2', 'u3'], 't-kyoto': ['u5'] },
   }
 }

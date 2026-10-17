@@ -4,7 +4,7 @@ import { toast } from '../../store/useToastStore'
 
 /**
  * Loads a server trip's places, votes, itinerary, expenses and packing list
- * when its workspace opens. Returns { loading } — demo trips are never loading.
+ * when its workspace opens. Returns { loading } — example trips are never loading.
  */
 export function useRemoteTripData(trip) {
   const tripId = trip?.remote ? trip.id : null
