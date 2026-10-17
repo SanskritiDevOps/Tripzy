@@ -66,7 +66,7 @@ Tripzy brings all of this into one shared workspace that updates live for the wh
 | **Backend** | Node.js 22, Express 5, Socket.IO, Prisma 7, Zod, JSON Web Tokens + bcrypt, Google Identity Services, Nodemailer, Helmet, express-rate-limit, Pino |
 | **Database** | PostgreSQL 16 (optional Redis for scaling live updates across servers) |
 | **AI and maps** | Google Gemini (itinerary planning), OpenStreetMap Nominatim (place search and geocoding) |
-| **Testing** | Vitest and Supertest (140+ automated API tests) |
+| **Testing** | Vitest and Supertest: API tests against a real PostgreSQL database, plus unit tests for the web app’s money, settle-up, permission and planning logic |
 | **Hosting** | Vercel (frontend), Render (API), Neon (PostgreSQL); Docker Compose for local development |
 
 ---
@@ -113,7 +113,7 @@ Writes run in database transactions that also record the matching activity-feed 
 ## Project structure
 
 ```
-Frontend/   React app (src/), Vercel config and the mail-relay function (api/)
+Frontend/   React app (src/), unit tests (tests/), Vercel config and the mail-relay function (api/)
 Backend/    Express API (src/), Prisma schema and migrations (prisma/), tests (tests/)
 docker-compose.yml   PostgreSQL and Redis for local development
 render.yaml          Render deployment blueprint for the API
@@ -147,7 +147,7 @@ npm run dev                          # http://localhost:5173
 
 Google sign-in, AI planning (`GEMINI_API_KEY`) and invite emails (`SMTP_URL`) are optional; each is described in `Backend/.env.example`. Without them, the app still works: the Google button is hidden, the route-based planner is used, and invite links can be copied instead of emailed.
 
-**Tests:** create a test database once with `docker compose exec postgres psql -U tripzy -c "CREATE DATABASE tripzy_test;"`, then run `npm test` in `Backend/`.
+**Tests:** run `npm test` in `Frontend/`. For the API tests, create a test database once with `docker compose exec postgres psql -U tripzy -c "CREATE DATABASE tripzy_test;"`, then run `npm test` in `Backend/`.
 
 ---
 
