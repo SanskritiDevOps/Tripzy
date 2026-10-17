@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { uuidParam } from '../../middleware/validate.js'
 
-export const PLACE_CATEGORIES = ['sight', 'food', 'stay', 'activity', 'transit', 'other']
+const PLACE_CATEGORIES = ['sight', 'food', 'stay', 'activity', 'transit', 'other']
 
 const placeFields = {
   name: z.string().trim().min(2, 'Give the place a name').max(120, 'Name is too long'),

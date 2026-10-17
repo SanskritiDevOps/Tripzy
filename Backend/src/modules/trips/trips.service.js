@@ -57,13 +57,13 @@ function toData(input) {
   return data
 }
 
-/** The authenticated user becomes the team leader and first member in one write. */
 /** Geocoded centre as columns, looked up before the write (never blocks saving: null on failure). */
 async function centreFor(destination) {
   const centre = await geocodeDestination(destination)
   return { destinationLat: centre?.lat ?? null, destinationLng: centre?.lng ?? null }
 }
 
+/** The authenticated user becomes the team leader and first member in one write. */
 export async function createTrip(userId, input) {
   const centre = await centreFor(input.destination)
   const trip = await prisma.$transaction(async (tx) => {

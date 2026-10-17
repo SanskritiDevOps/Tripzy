@@ -1,4 +1,4 @@
-// AI itinerary planning (README §11). Produces a *draft* — nothing is saved here;
+// AI itinerary planning. Produces a *draft* — nothing is saved here;
 // the client shows a preview and saves it through POST /itinerary/plan.
 //
 // 1. Gather days, fixed stops (locked, or every existing stop in "fill" mode) and places.

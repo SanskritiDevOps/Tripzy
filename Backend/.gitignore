@@ -8,3 +8,6 @@ node_modules
 .claude/
 .agents/
 .windsurf/
+
+# Skill installer lock file (local tooling)
+skills-lock.json

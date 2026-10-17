@@ -1,6 +1,5 @@
 {
-  "name": "backend",
-  "version": "1.0.0",
+  "name": "tripzy-api",
   "description": "Tripzy REST API (Express + Prisma + Socket.IO)",
   "main": "src/server.js",
   "scripts": {
@@ -37,7 +36,6 @@
     "pg": "^8.23.1",
     "pino": "^10.4.0",
     "pino-http": "^11.0.0",
-    "rate-limit-redis": "^6.0.1",
     "socket.io": "^4.8.4",
     "zod": "^4.6.5"
   },

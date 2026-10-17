@@ -19,9 +19,9 @@ const CACHE_MAX = 1000
 const NEAR_RADIUS_DEG = 0.75 // ~80 km box around the trip centre
 
 export const ATTRIBUTION = '© OpenStreetMap contributors'
-export const isGeocoderEnabled = () => Boolean(env.GEOCODER_URL)
+const isGeocoderEnabled = () => Boolean(env.GEOCODER_URL)
 
-// ── Cache + queue ───────────────────────────────────────────────
+// Cache + queue
 const cache = new Map() // key → { value, expires }
 const inflight = new Map() // key → Promise
 let nextSlotAt = 0
@@ -86,7 +86,7 @@ async function nominatim(params) {
   return request
 }
 
-// ── Mapping OSM results to Tripzy places ────────────────────────
+// Mapping OSM results to Tripzy places
 const FOOD = new Set(['restaurant', 'cafe', 'fast_food', 'bar', 'pub', 'food_court', 'ice_cream', 'biergarten', 'bakery', 'confectionery'])
 const STAY = new Set(['hotel', 'hostel', 'guest_house', 'motel', 'apartment', 'chalet', 'camp_site', 'resort'])
 const SIGHT_TOURISM = new Set(['attraction', 'museum', 'viewpoint', 'artwork', 'gallery', 'zoo', 'theme_park', 'aquarium', 'monument'])

@@ -56,7 +56,7 @@ function formatMoney(minor, currency = 'INR') {
 }
 
 /** Plain-text sentence for an entry, e.g. "Priya added Amber Fort". The frontend can render richer markup from `details`. */
-export function summarize(action, details, actorName = 'Someone') {
+function summarize(action, details, actorName = 'Someone') {
   const d = details ?? {}
   switch (action) {
     case ACTIONS.TRIP_CREATED:

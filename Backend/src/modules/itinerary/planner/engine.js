@@ -1,4 +1,4 @@
-// Code-side itinerary planning (README §11: "code does the math, AI does the judgment").
+// Code-side itinerary planning: the code does the math, the AI does the judgment.
 //
 // - scheduleDay: turns an ordered list of places into start times, respecting the
 //   day window, pace, travel time and stops that must not move (locked / kept).
@@ -10,7 +10,7 @@
 
 import { centroid, distanceKm, nearestNeighborOrder, travelMinutes } from './geo.js'
 
-export const PACES = {
+const PACES = {
   relaxed: { label: 'relaxed', bufferMinutes: 30, activityShare: 0.65 },
   balanced: { label: 'balanced', bufferMinutes: 15, activityShare: 0.8 },
   packed: { label: 'packed', bufferMinutes: 5, activityShare: 1 },

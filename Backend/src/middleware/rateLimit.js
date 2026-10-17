@@ -2,6 +2,8 @@ import { ipKeyGenerator, rateLimit } from 'express-rate-limit'
 import { env } from '../config/env.js'
 
 const message = (text) => ({ message: text, code: 'RATE_LIMITED' })
+// Limits on costly endpoints count per account, so people sharing an IP don't block each other.
+const perUser = (req) => req.user?.id ?? ipKeyGenerator(req.ip)
 
 /** Per-IP limit on credential endpoints to slow down password guessing. */
 export const authLimiter = rateLimit({
@@ -28,11 +30,7 @@ export const refreshLimiter = rateLimit({
   message: message('Too many requests from your network. Please wait a few minutes.'),
 })
 
-/**
- * AI planning calls a paid/free-tier-limited external API, so it's limited per
- * account (not per IP): a short burst limit and a daily cap.
- */
-const perUser = (req) => req.user?.id ?? ipKeyGenerator(req.ip)
+/** AI planning calls a quota-limited external API: a short burst limit and a daily cap. */
 // The code-only planner runs locally, so it isn't limited.
 const codeOnly = (req) => req.body?.engine === 'code'
 export const aiBurstLimiter = rateLimit({
@@ -52,4 +50,14 @@ export const aiDailyLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: message('You’ve reached today’s AI planning limit. Manual planning still works.'),
+})
+
+/** Map searches hit a shared, rate-limited public service (OpenStreetMap Nominatim). */
+export const geoSearchLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: env.isTest ? 1000 : 20,
+  keyGenerator: perUser,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: message('Too many map searches — wait a minute and try again.'),
 })

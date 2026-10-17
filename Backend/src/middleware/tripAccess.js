@@ -1,19 +1,17 @@
 import { prisma } from '../config/prisma.js'
 import { AppError } from '../utils/AppError.js'
 
-export const ROLES = Object.freeze({ LEADER: 'LEADER', MEMBER: 'MEMBER' })
-
 /**
- * Trip-level access control (README §10.6).
+ * Trip-level access control.
  *
- *   requireTripAccess()                    → any member of the trip
- *   requireTripAccess([ROLES.LEADER], msg) → team leader only
+ *   requireTripAccess()                  → any member of the trip
+ *   requireTripAccess(['LEADER'], msg)   → team leader only
  *
  * Must run after requireAuth. Reads the trip id from `:tripId`, then attaches
  * `req.membership` and `req.tripRole`. Non-members and members without an
  * allowed role get 403.
  */
-export function requireTripAccess(allowedRoles = [ROLES.LEADER, ROLES.MEMBER], message) {
+export function requireTripAccess(allowedRoles = ['LEADER', 'MEMBER'], message) {
   return async (req, _res, next) => {
     const tripId = req.valid?.params?.tripId ?? req.params.tripId
     const membership = await prisma.tripMember.findUnique({
@@ -31,6 +29,4 @@ export function requireTripAccess(allowedRoles = [ROLES.LEADER, ROLES.MEMBER], m
   }
 }
 
-export const leaderOnly = (message) => requireTripAccess([ROLES.LEADER], message)
-
-export const isLeader = (req) => req.tripRole === ROLES.LEADER
+export const leaderOnly = (message) => requireTripAccess(['LEADER'], message)

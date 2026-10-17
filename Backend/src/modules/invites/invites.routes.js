@@ -1,16 +1,10 @@
 import { Router } from 'express'
-import { z } from 'zod'
-import { validate, uuidParam } from '../../middleware/validate.js'
+import { validate } from '../../middleware/validate.js'
 import { authLimiter } from '../../middleware/rateLimit.js'
+import { createInviteSchema, inviteParams, tokenSchema } from './invites.schemas.js'
 import * as invitesService from './invites.service.js'
 import { originSocketId } from '../../middleware/broadcast.js'
 import { emitTripChanged } from '../../realtime/io.js'
-
-const createInviteSchema = z.object({
-  email: z.string({ error: 'Email is required' }).trim().toLowerCase().max(254).pipe(z.email('Enter a valid email address')),
-})
-const inviteParams = z.object({ tripId: uuidParam, inviteId: uuidParam })
-export const tokenSchema = z.object({ token: z.string({ error: 'Invite token is required' }).min(20, 'Invalid invite token').max(200) })
 
 /** Mounted at /api/trips/:tripId/invites behind requireAuth + leader-only access. */
 export const invitesRouter = Router({ mergeParams: true })
@@ -39,7 +33,7 @@ export async function joinTrip(req, res) {
   res.json({ trip })
 }
 
-/** GET /api/invites/:token — public preview for the join page (README §8). */
+/** GET /api/invites/:token — public preview for the join page. */
 export const publicInvitesRouter = Router()
 publicInvitesRouter.get('/:token', authLimiter, validate({ params: tokenSchema }), async (req, res) => {
   res.set('Cache-Control', 'no-store')

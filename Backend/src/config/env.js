@@ -17,12 +17,9 @@ const schema = z.object({
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().min(1).max(90).default(7),
   // Optional: enables "Continue with Google". OAuth 2.0 Web client ID from Google Cloud Console.
   GOOGLE_CLIENT_ID: z.string().trim().optional().transform((v) => v || undefined),
-  // Invite emails. Without SMTP_URL, emails are written to the log (dev mode).
+  // Invite emails: the Vercel mail relay (Frontend/api/mail-relay.js) if set, else SMTP_URL,
+  // else they're written to the log. MAIL_RELAY_URL e.g. https://your-site.vercel.app/api/mail-relay
   SMTP_URL: z.string().trim().optional().transform((v) => v || undefined),
-  // Email via Brevo's HTTPS API (free 300/day). Use this on free hosting, which blocks SMTP.
-  BREVO_API_KEY: z.string().trim().optional().transform((v) => v || undefined),
-  // Email via the Vercel mail relay (Frontend/api/mail-relay.js): Gmail + Nodemailer on Vercel,
-  // which allows SMTP. MAIL_RELAY_URL e.g. https://your-site.vercel.app/api/mail-relay
   MAIL_RELAY_URL: z.string().trim().optional().transform((v) => v || undefined).pipe(z.url().optional()),
   MAIL_RELAY_SECRET: z.string().trim().optional().transform((v) => v || undefined),
   MAIL_FROM: z.string().default('Tripzy <no-reply@tripzy.app>'),

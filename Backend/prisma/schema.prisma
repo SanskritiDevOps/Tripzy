@@ -1,4 +1,4 @@
-// Tripzy database schema (README §7).
+// Tripzy database schema.
 // Models are added feature by feature; this revision covers auth and trips.
 
 generator client {
@@ -135,7 +135,7 @@ model Trip {
   startDate      DateTime  @map("start_date") @db.Date
   endDate        DateTime  @map("end_date") @db.Date
   currency       String    @default("INR")
-  /// Group budget in minor units (paise) — integers, never floats (README §10.1).
+  /// Group budget in minor units (paise) — integers, never floats.
   /// Only the team leader can change it.
   budgetMinor    BigInt    @default(0) @map("budget_minor")
   groupType      String    @default("friends") @map("group_type")
@@ -245,7 +245,7 @@ model TripActivity {
   @@map("trip_activities")
 }
 
-/// One vote per user per place (README §10.3).
+/// One vote per user per place.
 model Vote {
   id        String   @id @default(uuid()) @db.Uuid
   placeId   String   @map("place_id") @db.Uuid
@@ -291,7 +291,7 @@ model ItineraryItem {
   notes           String     @default("")
   /// Estimated cost for the group, in paise
   costMinor       Int        @default(0) @map("cost_minor")
-  /// Optimistic concurrency: every write bumps it; stale writes get 409 (README §10.5).
+  /// Optimistic concurrency: every write bumps it; stale writes get 409.
   version         Int        @default(1)
   createdById     String?    @map("created_by_id") @db.Uuid
   createdAt       DateTime   @default(now()) @map("created_at")
@@ -310,14 +310,14 @@ model Expense {
   id             String    @id @default(uuid()) @db.Uuid
   tripId         String    @map("trip_id") @db.Uuid
   title          String
-  /// Paise — integers only (README §10.1)
+  /// Paise — integers only
   amountMinor    BigInt    @map("amount_minor")
   currency       String    @default("INR")
   paidById       String    @map("paid_by_id") @db.Uuid
   splitType      SplitType @map("split_type")
   /// stay | transit | food | activity | shopping | other
   category       String    @default("other")
-  /// Client-generated key so a retried/double-clicked submit creates one expense (README §10.4).
+  /// Client-generated key so a retried/double-clicked submit creates one expense.
   idempotencyKey String    @unique @map("idempotency_key")
   createdById    String?   @map("created_by_id") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at")

@@ -2,7 +2,7 @@ import { prisma } from '../../config/prisma.js'
 import { AppError } from '../../utils/AppError.js'
 import { ACTIONS, logTripActivity } from '../activities/activities.service.js'
 
-export const STOP_LOCKED_MESSAGE = 'This stop is locked by the team leader and cannot be modified.'
+const STOP_LOCKED_MESSAGE = 'This stop is locked by the team leader and cannot be modified.'
 const DAY_MS = 86_400_000
 
 const toMinutes = (time) => {
@@ -10,7 +10,7 @@ const toMinutes = (time) => {
   return h * 60 + m
 }
 
-export function serializeItem(item) {
+function serializeItem(item) {
   return {
     id: item.id,
     dayId: item.dayId,
@@ -113,7 +113,7 @@ export async function addItem({ tripId, userId, role }, input) {
 /**
  * Edits a stop. Send the `version` you last saw: if someone saved the stop in
  * the meantime, the write is rejected with 409 and the current stop is returned
- * so the client can show it (README §10.5).
+ * so the client can show it.
  */
 export async function updateItem({ tripId, userId, role, itemId }, { version, ...input }) {
   const item = await findItem(prisma, tripId, itemId)
@@ -204,7 +204,7 @@ export async function reorderDay({ tripId, userId, role, dayId }, orderedItems) 
 }
 
 /**
- * Saves a generated plan (README §11) — from Gemini or the code-only planner.
+ * Saves a generated plan, from the AI or the code-only planner.
  * With `replaceDayIds` (or the single `replaceDayId`), those days' unprotected
  * stops are cleared first ("Regenerate"); locked stops and stops of locked
  * places are always kept. Each new stop gets source AI and the AI's tip as notes.

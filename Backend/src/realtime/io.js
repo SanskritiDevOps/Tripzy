@@ -11,10 +11,6 @@ export function setIo(server) {
   io = server
 }
 
-export function getIo() {
-  return io
-}
-
 /**
  * Tells everyone in the trip room that some of its data changed. Clients
  * re-fetch only the listed scopes ('trip' | 'places' | 'itinerary' |

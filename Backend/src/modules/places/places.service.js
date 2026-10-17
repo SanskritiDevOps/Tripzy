@@ -2,9 +2,9 @@ import { prisma } from '../../config/prisma.js'
 import { AppError } from '../../utils/AppError.js'
 import { ACTIONS, logTripActivity } from '../activities/activities.service.js'
 
-export const LOCKED_MESSAGE = 'This place is locked by the team leader and cannot be modified.'
+const LOCKED_MESSAGE = 'This place is locked by the team leader and cannot be modified.'
 
-export function serializePlace(place) {
+function serializePlace(place) {
   return {
     id: place.id,
     tripId: place.tripId,
@@ -104,7 +104,7 @@ export async function setLock({ tripId, placeId, userId }, locked) {
   return serializePlace(place)
 }
 
-// ── Votes (README §10.3) ─────────────────────────────────────────────
+// Votes
 
 async function assertVotingOpen(tripId) {
   const trip = await prisma.trip.findUnique({ where: { id: tripId }, select: { votingDeadline: true } })

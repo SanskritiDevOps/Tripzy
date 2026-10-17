@@ -1,4 +1,4 @@
-// Socket.IO server for live trip collaboration (README §7).
+// Socket.IO server for live trip collaboration.
 //
 //   connect      auth: { token } — the same short-lived access JWT the REST API uses
 //   trip:join    { tripId } → ack { ok, onlineUserIds } | { ok: false, code, message }

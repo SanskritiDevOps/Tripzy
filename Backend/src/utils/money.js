@@ -1,4 +1,4 @@
-// Money is integers in minor units (paise), never floats — README §10.1.
+// Money is integers in minor units (paise), never floats.
 // Same algorithms as Frontend/src/utils/money.js and settlements.js, so the
 // server is the source of truth and the UI shows identical numbers.
 
@@ -15,7 +15,7 @@ export function splitEqual(totalMinor, userIds) {
 }
 
 /** Percentage split in basis points (2 decimals); leftover paise go to the first non-zero shares. */
-export function splitPercent(totalMinor, entries) {
+function splitPercent(totalMinor, entries) {
   const withBp = entries.map((e) => ({ userId: e.userId, bp: Math.round(Number(e.percent) * 100) }))
   const shares = withBp.map((e) => ({ userId: e.userId, shareMinor: Math.floor((totalMinor * e.bp) / 10000) }))
   let remainder = totalMinor - shares.reduce((sum, s) => sum + s.shareMinor, 0)
@@ -79,7 +79,7 @@ export function computeBalances(userIds, expenses, settlements) {
   return Object.values(rows)
 }
 
-/** Greedy largest-debtor ↔ largest-creditor matching: at most n − 1 payments (README §10.2). */
+/** Greedy largest-debtor ↔ largest-creditor matching: at most n − 1 payments. */
 export function simplifyDebts(balances) {
   const creditors = balances.filter((b) => b.netMinor > 0).map((b) => ({ ...b }))
   const debtors = balances.filter((b) => b.netMinor < 0).map((b) => ({ ...b, netMinor: -b.netMinor }))

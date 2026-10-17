@@ -9,7 +9,7 @@ import { ACTIONS, logTripActivity } from '../activities/activities.service.js'
 const hashToken = (token) => crypto.createHash('sha256').update(token).digest('hex')
 
 /** "priya.nair@gmail.com" → "pr***@gmail.com" (shown to people who aren't the invitee). */
-export function maskEmail(email) {
+function maskEmail(email) {
   const [local, domain] = email.split('@')
   return `${local.slice(0, 2)}${'*'.repeat(Math.max(3, local.length - 2))}@${domain}`
 }

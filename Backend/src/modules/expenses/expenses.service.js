@@ -5,7 +5,7 @@ import { ACTIONS, logTripActivity } from '../activities/activities.service.js'
 
 const OWNER_MESSAGE = 'Only the person who added this expense or the team leader can change it.'
 
-export function serializeExpense(e) {
+function serializeExpense(e) {
   return {
     id: e.id,
     tripId: e.tripId,
@@ -206,7 +206,7 @@ export async function recordSettlement({ tripId, userId, role }, { fromUser, toU
   return serializeSettlement(settlement)
 }
 
-/** Net balance per person and the minimal set of payments to settle up (README §10.2). */
+/** Net balance per person and the minimal set of payments to settle up. */
 export async function getBalances(tripId) {
   const [{ expenses, settlements }, members] = await Promise.all([listExpenses(tripId), memberIds(prisma, tripId)])
   const balances = computeBalances([...members], expenses, settlements)

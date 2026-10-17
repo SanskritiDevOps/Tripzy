@@ -241,14 +241,6 @@ describe('POST /itinerary/generate with Gemini (mocked)', () => {
     expect(calls).toHaveLength(2)
     expect(res.body).toMatchObject({ engine: 'code', fallbackCode: 'AI_INVALID_PLAN' })
   })
-
-  it('falls back when the API key is rejected', async () => {
-    const ctx = await setup()
-    env.GEMINI_API_KEY = 'bad-key'
-    mockGemini(403)
-    const res = await generate(ctx, ctx.member, { dayIds: [ctx.days[0].id], places: allPlaces(ctx).slice(0, 2) }).expect(200)
-    expect(res.body).toMatchObject({ engine: 'code', fallbackCode: 'AI_AUTH' })
-  })
 })
 
 describe('POST /itinerary/plan (save a draft)', () => {
@@ -285,7 +277,7 @@ describe('POST /itinerary/plan (save a draft)', () => {
   })
 })
 
-describe('Gemini overload handling', () => {
+describe('Gemini model fallbacks', () => {
   it('switches to the next model when the main one is overloaded (503), and says which model planned', async () => {
     const ctx = await setup()
     env.GEMINI_API_KEY = 'test-key'
@@ -314,10 +306,8 @@ describe('Gemini overload handling', () => {
     const chain = [env.GEMINI_MODEL, ...env.GEMINI_FALLBACK_MODELS]
     expect(calls.map((c) => c.url.match(/models\/([^:]+):/)[1])).toEqual([...chain, ...chain]) // two passes
   })
-})
 
-describe('Gemini model chain', () => {
-  it('does not try other models when the API key is rejected', async () => {
+  it('falls back to the route-based plan without trying other models when the API key is rejected', async () => {
     const ctx = await setup()
     env.GEMINI_API_KEY = 'bad-key'
     const calls = mockGemini(403, 200, 200)
@@ -325,9 +315,7 @@ describe('Gemini model chain', () => {
     expect(res.body).toMatchObject({ engine: 'code', fallbackCode: 'AI_AUTH' })
     expect(calls).toHaveLength(1)
   })
-})
 
-describe('Gemini time budget', () => {
   it('gives up on a hanging main model in time for a fallback to answer', async () => {
     const ctx = await setup()
     env.GEMINI_API_KEY = 'test-key'
@@ -353,9 +341,7 @@ describe('Gemini time budget', () => {
     // The hanging model gets at most half of the 50 s budget, leaving the rest for fallbacks.
     expect(Date.now() - started).toBeLessThan(30_000)
   }, 45_000)
-})
 
-describe('Gemini busy spikes', () => {
   it('goes round the models a second time when all were busy, and plans with AI', async () => {
     const ctx = await setup()
     env.GEMINI_API_KEY = 'test-key'
